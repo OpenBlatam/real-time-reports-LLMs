@@ -1,0 +1,75 @@
+# File: docker-compose.yml
+
+services:
+  postgres:
+    image: postgres:13-alpine
+    environment:
+      POSTGRES_USER: airbyte
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: airbyte
+    volumes:
+      - airbyte_db:/var/lib/postgresql/data
+
+  airbyte-server:
+    image: airbyte/server:latest
+    depends_on:
+      - postgres
+    environment:
+      - CONFIG_ROOT=/data
+      - DB_USER=airbyte
+      - DB_PASSWORD=password
+      - DB_URL=jdbc:postgresql://postgres:5432/airbyte
+      - WORKSPACE_ROOT=/workspace
+    ports:
+      - "8000:8000"
+    volumes:
+      - airbyte_config:/data
+      - airbyte_workspace:/workspace
+
+  airbyte-scheduler:
+    image: airbyte/scheduler:latest
+    depends_on:
+      - postgres
+    environment:
+      - CONFIG_ROOT=/data
+      - DB_USER=airbyte
+      - DB_PASSWORD=password
+      - DB_URL=jdbc:postgresql://postgres:5432/airbyte
+      - WORKSPACE_ROOT=/workspace
+      - JOB_ROOT=/tmp/airbyte_local
+      - TEMP_DIR=/tmp/airbyte_local
+      - METRICS_ROOT=/tmp/airbyte_local
+    volumes:
+      - airbyte_config:/data
+      - airbyte_workspace:/workspace
+
+  clickhouse-server:
+    image: yandex/clickhouse-server:latest
+    container_name: clickhouse-server
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    depends_on:
+      - clickhouse-server
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=Vertamedia-clickhouse-datasource
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+
+volumes:
+  airbyte_db:
+  airbyte_config:
+  airbyte_workspace:
+  clickhouse_data:
+  grafana_data:
+

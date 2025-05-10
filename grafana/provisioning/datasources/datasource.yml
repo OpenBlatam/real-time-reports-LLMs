@@ -1,0 +1,19 @@
+datasources:
+  - name: ClickHouse
+    type: vertamedia-clickhouse-datasource
+    access: proxy
+    url: http://clickhouse-server:8123
+    isDefault: true
+    jsonData:
+      defaultDatabase: default
+      tlsSkipVerify: true
+
+
+
+
+
+
+
+
+
+
