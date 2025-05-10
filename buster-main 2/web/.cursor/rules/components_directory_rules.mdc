@@ -1,0 +1,40 @@
+---
+description: rules for the components directory
+globs: src/components/**/*
+---
+# Components Directory Structure
+
+The components directory is organized into two main subdirectories:
+
+## `/ui`
+- Contains basic, reusable UI components
+- These components are the building blocks of the application
+- Components in this directory should be generic and not tied to specific features
+- Examples include: buttons, inputs, cards, modals, etc.
+
+## `/features`
+- Contains feature-specific components
+- These components are composed using basic components from the `/ui` directory
+- May be specific to certain features or functionality
+- Can be reused across the application if the same feature appears in multiple places
+- Examples might include: UserProfile, PaymentForm, NavigationMenu, etc.
+
+### Component Composition Rules
+1. Feature components should be built primarily using components from the `/ui` directory
+2. Feature components can contain business logic specific to their feature
+3. UI components should remain pure and not contain feature-specific logic
+4. Feature components can be composed of other feature components when necessary
+
+### Directory Structure Example
+```
+components/
+├── ui/
+│   ├── Button/
+│   ├── Input/
+│   ├── Card/
+│   └── Modal/
+└── features/
+    ├── UserProfile/
+    ├── PaymentForm/
+    └── NavigationMenu/
+```

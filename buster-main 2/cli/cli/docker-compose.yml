@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # --- Supabase ---
+  # Supabase is a collection of services.
+  # It's STRONGLY recommended to use the official Supabase docker-compose setup:
+  # 1. git clone --depth 1 https://github.com/supabase/supabase
+  # 2. cd supabase/docker
+  # 3. cp .env.example .env (and fill it out)
+  # 4. docker-compose up -d
+  # You would then integrate those services or manage them separately.
+  # For a very basic placeholder (NOT FOR PRODUCTION):
+  # postgres:
+  #   image: postgres:15
+  #   restart: always
+  #   environment:
+  #     POSTGRES_USER: supabase
+  #     POSTGRES_PASSWORD: yoursecurepassword
+  #     POSTGRES_DB: postgres
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - supabase_db_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:latest
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    # command: redis-server --save 60 1 --loglevel warning # Example: persist data
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable # Using main-stable for more predictability
+    restart: always
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml # Mount your LiteLLM config
+    environment:
+      # Define any environment variables LiteLLM needs, e.g., API keys
+      # OPENAI_API_KEY: "your_openai_api_key_here"
+      # LITELLM_MASTER_KEY: "your_litellm_master_key" # If using proxy features
+      # DATABASE_URL: "your_database_url_for_litellm" # If LiteLLM needs a DB
+      # LITELLM_SALT_KEY: "a_secure_random_salt_key" # For encrypting LLM keys
+      LITELLM_ENV: local # Example, can be 'local', 'staging', 'production'
+    # depends_on:
+    #   - redis # If LiteLLM uses Redis for caching/rate limiting and it's defined here
+
+volumes:
+  # supabase_db_data: # Uncomment if using the basic postgres placeholder
+  redis_data: 

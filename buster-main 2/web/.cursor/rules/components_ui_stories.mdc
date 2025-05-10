@@ -1,0 +1,11 @@
+---
+description: Rules for new stories
+globs: src/components/**/*.stories.tsx
+alwaysApply: false
+---
+- All new stories title with "UI/directory/{componentName}" unless specified otherwise.
+- Instead of console log for click events, you should do native storybook actions
+- If a new story is made in the controller directory, I would like it title "Controllers/{controller name or parent controller name}/{componentName}"
+- If a new story is found in the features directory, I would like it titled "Features/{featureName or parent feature name}/{componentName}"
+- onClick events (or similar) should be mocked with fn() from the storybook test package
+- If I ever need to mock an endpoint you should use msw. Use MSW for mocking api calls. All endpoints should be appended with the BASE_URL For example:         http.get(`BASE_URL`, () => {}). The BASE_URL is found in [config.ts](mdc:src/api/buster_rest/config.ts)

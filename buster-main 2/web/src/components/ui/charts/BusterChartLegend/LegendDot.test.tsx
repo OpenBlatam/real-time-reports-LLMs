@@ -1,0 +1,91 @@
+import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { LegendItemDot } from './LegendDot';
+import { ChartType } from '@/api/asset_interfaces/metric/charts';
+
+describe('LegendItemDot', () => {
+  const defaultProps = {
+    color: '#FF0000',
+    inactive: false,
+    type: ChartType.Bar
+  };
+
+  it('renders with default props', () => {
+    render(<LegendItemDot {...defaultProps} />);
+    const dot = screen.getByTestId('legend-dot');
+    expect(dot).toHaveStyle({ backgroundColor: '#FF0000' });
+  });
+
+  it('renders with different chart types', () => {
+    const { rerender } = render(<LegendItemDot {...defaultProps} type={ChartType.Bar} />);
+    expect(screen.getByTestId('legend-dot')).toHaveClass('rounded-sm');
+
+    rerender(<LegendItemDot {...defaultProps} type={ChartType.Line} />);
+    expect(screen.getByTestId('legend-dot')).toHaveClass('rounded-sm');
+
+    rerender(<LegendItemDot {...defaultProps} type={ChartType.Scatter} />);
+    expect(screen.getByTestId('legend-dot')).toHaveClass('rounded-full');
+  });
+
+  it('renders with different sizes', () => {
+    const { rerender } = render(<LegendItemDot {...defaultProps} size="default" />);
+    expect(screen.getByTestId('legend-dot-container')).toHaveClass('w-4.5');
+
+    rerender(<LegendItemDot {...defaultProps} size="sm" />);
+    expect(screen.getByTestId('legend-dot-container')).toHaveClass('w-2');
+  });
+
+  it('handles inactive state', () => {
+    render(<LegendItemDot {...defaultProps} inactive={true} />);
+    const dot = screen.getByTestId('legend-dot');
+    expect(dot).not.toHaveStyle({ backgroundColor: '#FF0000' });
+  });
+
+  it('calls onFocusItem when clicked', () => {
+    const onFocusItem = jest.fn();
+    render(<LegendItemDot {...defaultProps} onFocusItem={onFocusItem} />);
+
+    const dot = screen.getByTestId('legend-dot');
+    fireEvent.click(dot);
+
+    expect(onFocusItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows focus target on hover when onFocusItem is provided', () => {
+    const onFocusItem = jest.fn();
+    render(<LegendItemDot {...defaultProps} onFocusItem={onFocusItem} />);
+
+    const container = screen.getByTestId('legend-dot-container');
+    fireEvent.mouseEnter(container);
+
+    // The target icon should be visible on hover
+    expect(screen.getByTestId('focus-target')).toBeInTheDocument();
+  });
+
+  it('does not show focus target when onFocusItem is not provided', () => {
+    render(<LegendItemDot {...defaultProps} />);
+
+    const container = screen.getByTestId('legend-dot-container');
+    fireEvent.mouseEnter(container);
+
+    // The target icon should not be present
+    expect(screen.queryByTestId('focus-target')).not.toBeInTheDocument();
+  });
+
+  it('stops event propagation when clicked with onFocusItem', () => {
+    const onFocusItem = jest.fn();
+    const parentClick = jest.fn();
+
+    render(
+      <div onClick={parentClick}>
+        <LegendItemDot {...defaultProps} onFocusItem={onFocusItem} />
+      </div>
+    );
+
+    const dot = screen.getByTestId('legend-dot');
+    fireEvent.click(dot);
+
+    expect(onFocusItem).toHaveBeenCalledTimes(1);
+    expect(parentClick).not.toHaveBeenCalled();
+  });
+});

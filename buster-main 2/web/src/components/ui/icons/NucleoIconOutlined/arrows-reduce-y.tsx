@@ -1,0 +1,49 @@
+import React from 'react';
+
+import { iconProps } from './iconProps';
+
+function arrowsReduceY(props: iconProps) {
+  const strokewidth = props.strokewidth || 1.3;
+  const title = props.title || '18px arrows reduce y';
+
+  return (
+    <svg height="1em" width="1em" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+      <g fill="currentColor">
+        <path
+          d="M12.25 4L9 7.25 5.75 4"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={strokewidth}
+        />
+        <path
+          d="M9 7.25L9 1.75"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={strokewidth}
+        />
+        <path
+          d="M5.75 14L9 10.75 12.25 14"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={strokewidth}
+        />
+        <path
+          d="M9 10.75L9 16.25"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={strokewidth}
+        />
+      </g>
+    </svg>
+  );
+}
+
+export default arrowsReduceY;

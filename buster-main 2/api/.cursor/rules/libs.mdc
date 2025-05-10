@@ -1,0 +1,184 @@
+---
+description: This is helpful for building libs for our web server to interact with.
+globs: libs/**/*.rs
+alwaysApply: false
+---
+
+# Library Construction Guide
+
+## Directory Structure
+```
+libs/
+├── my_lib/
+│   ├── Cargo.toml       # Library-specific manifest
+│   ├── src/
+│   │   ├── lib.rs       # Library root
+│   │   ├── types.rs      # Data structures and types
+│   │   ├── utils/       # Utility functions
+│   │   └── errors.rs    # Custom error types
+│   └── tests/           # Integration tests
+```
+
+## Cargo.toml Template
+```toml
+[package]
+name = "my_lib"
+version = "0.1.0"
+edition = "2021"
+
+# Dependencies should be inherited from workspace
+[dependencies]
+# Use workspace dependencies
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+# Add other workspace dependencies as needed
+
+# Development dependencies
+[dev-dependencies]
+tokio-test = { workspace = true }
+# Add other workspace dev dependencies as needed
+
+# Feature flags
+[features]
+default = []
+# Define library-specific features here
+```
+
+## Best Practices
+
+### 1. Workspace Integration
+- Use `{ workspace = true }` for common dependencies
+- Never specify library-specific versions for dependencies that exist in the workspace
+- All dependencies should be managed by the workspace
+- Keep feature flags modular and specific to the library's needs
+
+### 2. Library Structure
+- Keep the library focused on a single responsibility
+- Use clear module hierarchies
+- Export public API through `lib.rs`
+- Follow the workspace's common patterns
+
+Example `lib.rs`:
+```rust
+//! My Library documentation
+//! 
+//! This library provides...
+
+// Re-export common workspace types if needed
+pub use anyhow::{Result, Error};
+
+pub mod models;
+pub mod utils;
+mod errors;
+
+// Re-exports
+pub use errors::Error;
+pub use models::{ImportantType, AnotherType};
+```
+
+### 3. Error Handling
+- Use the workspace's common error types where appropriate
+- Define library-specific errors only when needed
+- Implement conversions to/from workspace error types
+
+Example `errors.rs`:
+```rust
+use thiserror::Error;
+use anyhow::Error as WorkspaceError;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("library specific error: {0}")]
+    LibrarySpecific(String),
+    
+    #[error(transparent)]
+    Workspace(#[from] WorkspaceError),
+}
+```
+
+### 4. Testing
+- Follow workspace testing conventions
+- Use shared test utilities from workspace when available
+- Keep library-specific test helpers in the library
+- Use workspace-defined test macros if available
+
+#### Database Integration Tests
+For tests that require database access, the preferred approach is to use automatic pool initialization:
+
+```rust
+// IMPORTANT: These dependencies are for TESTS ONLY
+// Add to your Cargo.toml under [dev-dependencies]:
+// lazy_static = { workspace = true }
+// ctor = "0.4.1"
+
+// In tests/mod.rs - this is compiled ONLY during tests, not in release builds
+use database::pool::init_pools;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    // Initialize test environment once across all tests
+    static ref TEST_ENV: () = {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        if let Err(e) = rt.block_on(init_pools()) {
+            panic!("Failed to initialize test pools: {}", e);
+        }
+        println!("✅ Test environment initialized");
+    };
+}
+
+// This constructor only exists in test builds
+#[ctor::ctor]
+fn init_test_env() {
+    lazy_static::initialize(&TEST_ENV);
+}
+```
+
+Then write normal tests without explicit initialization:
+
+```rust
+// In your test file
+#[tokio::test]
+async fn test_database_functionality() -> Result<()> {
+    // Pool is already initialized - just get it
+    let pool = database::pool::get_pg_pool();
+    
+    // Your test code here
+    Ok(())
+}
+```
+
+This pattern ensures:
+- Database pools are initialized exactly once at test startup
+- All tests can access the same pool without manual initialization
+- Test code remains clean without initialization boilerplate
+
+### 5. Documentation
+- Follow workspace documentation style
+- Link to related workspace documentation
+- Document workspace integration points
+- Include examples showing workspace type usage
+
+### 6. Integration Points
+- Define clear boundaries with other workspace crates
+- Use workspace traits and interfaces
+- Share common utilities through workspace-level crates
+- Consider cross-crate testing
+
+### 7. Development Workflow
+- Run workspace-level tests when making changes
+- Update workspace documentation if needed
+- Follow workspace versioning strategy
+- Use workspace-level CI/CD pipelines
+
+### 8. Dependencies
+- All dependencies should be inherited from the workspace
+- Never add library-specific dependency versions
+- Keep dependencies minimal and focused
+- The workspace will manage all dependency versions

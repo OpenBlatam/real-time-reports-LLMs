@@ -1,0 +1,306 @@
+---
+description: This is designed to help understand how to do testing in this project.
+globs: 
+alwaysApply: false
+---
+# Testing Rules and Best Practices
+
+## Testing Organization Best Practices
+
+### Recommended Mocking Libraries
+
+For consistent mocking across the codebase, use these libraries:
+
+| Library | Purpose | Use Case |
+|---------|---------|----------|
+| **mockito** | HTTP service mocking | Mocking external API calls in unit tests |
+| **mockall** | Trait/struct mocking | Mocking database or service interfaces in unit tests |
+| **axum-test-helper** / similar | In-memory HTTP requests | Testing server routing/middleware without real HTTP |
+
+Always prefer dependency injection patterns to enable easy mocking of dependencies.
+
+### Test Utilities and Setup
+
+#### Core Database Test Utilities (`libs/database/src/test_utils.rs`)
+
+The `database` library provides core utilities for setting up database state consistently across tests that need it (both within `libs/` and in `server/tests/`).
+
+```rust
+// Standard TestDb helper from libs/database/src/test_utils.rs
+pub struct TestDb {
+    pub test_id: String,
+    pub organization_id: Uuid,
+    pub user_id: Uuid,
+}
+
+impl TestDb {
+    /// Creates a new test database environment context.
+    /// Note: This does NOT initialize pools, assumes they are already initialized.
+    pub async fn new() -> Result<Self> { /* ... */ }
+
+    /// Get a database connection from the pre-initialized pool.
+    pub async fn get_conn(&self) -> Result<PooledConnection<AsyncPgConnection>> { /* ... */ }
+
+    /// Creates a basic User struct (does not insert).
+    pub async fn create_test_user(&self) -> Result<User> { /* ... */ }
+
+    /// Creates a basic MetricFile struct (does not insert).
+    pub async fn create_test_metric_file(&self, owner_id: &Uuid) -> Result<MetricFile> { /* ... */ }
+
+    /// Creates a basic DashboardFile struct (does not insert).
+    pub async fn create_test_dashboard_file(&self, owner_id: &Uuid) -> Result<DashboardFile> { /* ... */ }
+
+    /// Creates a basic AssetPermission struct (does not insert).
+    pub async fn create_asset_permission(
+        &self,
+        asset_id: &Uuid,
+        asset_type: AssetType,
+        identity_id: &Uuid,
+        role: AssetPermissionRole,
+    ) -> Result<AssetPermission> { /* ... */ }
+}
+
+// Helper functions for inserting test data (using pre-initialized pools)
+
+/// Insert a test asset permission.
+pub async fn insert_test_permission(permission: &AssetPermission) -> Result<()> { /* ... */ }
+
+/// Insert a test metric file.
+pub async fn insert_test_metric_file(metric_file: &MetricFile) -> Result<()> { /* ... */ }
+
+/// Insert a test dashboard file.
+pub async fn insert_test_dashboard_file(dashboard_file: &DashboardFile) -> Result<()> { /* ... */ }
+
+/// Clean up test data (assets and permissions) by asset IDs.
+pub async fn cleanup_test_data(asset_ids: &[Uuid]) -> Result<()> { /* ... */ }
+```
+
+**Note:** These helpers assume database pools (`pg_pool`, `sqlx_pool`, `redis_pool`) are initialized *before* tests run, typically via a mechanism like `#[ctor]` or a test runner setup.
+
+### Library Code Testing Structure
+- **Unit Tests**: Include unit tests inside library source files using `#[cfg(test)]` modules. **Unit tests must mock all external dependencies (DB, HTTP) and never connect to real services.**
+- **Integration Tests**: Place integration tests in the lib's `tests/` directory (e.g., `libs/database/tests/`, `libs/handlers/tests/`). These tests *can* interact with external services (like the test database) using the test utilities.
+- **Test Utils**: Library-specific helpers can reside in `src/test_utils.rs` (for internal use) or `tests/common/mod.rs` (for integration tests within that library).
+
+### Server (`server/`) Testing Structure
+- **Location**: API server tests reside in `server/tests/`.
+- **Goal**: These tests focus *only* on the server's responsibilities: routing, middleware application (auth, CORS, logging), request parsing, and response formatting at the framework level. **They should NOT test handler business logic.**
+- **Strategy**: Use Axum's in-memory testing capabilities.
+- **Test Utilities (`server/tests/common/mod.rs`)**: Create server-specific helpers here:
+    - `build_test_app()`: Constructs the Axum `Router`, wiring up routes and middleware.
+    - **Handler Mocking**: Replace real handlers (from `libs/handlers`) with mock functions that have the *same signature* but return simple `StatusCode` responses (e.g., `StatusCode::OK`, `StatusCode::CREATED`).
+    - **Mock Authentication**: Implement a test-only authentication extractor (`MockAuth`) that bypasses real token validation.
+    - **Mock State**: If necessary, provide a minimal `MockAppState`.
+- **Testing Tool**: Use `axum_test_helper::TestClient` (or similar) to send requests directly to the in-memory `Router`.
+- **Database Interaction**: If a middleware being tested *requires* specific database state (e.g., checking organization membership), use the standard `database::test_utils` helpers (`TestDb`, `insert_...`, `cleanup_test_data`) to set up that state.
+
+### Testing Configuration
+- Use cargo features to make running specific test groups easier (e.g., `cargo test --features integration-tests`).
+- Consider using `cargo-nextest` for parallel test execution.
+
+### Running Tests in Different Scopes
+
+- **Run all tests**: `cargo test` or `cargo nextest run`
+- **Run library-specific tests**: `cargo test -p <library-name>`
+- **Run server tests**: `cargo test -p server`
+- **Run a specific test**: `cargo test <test_name>`
+- **Run tests with specific pattern**: `cargo test -- <pattern>`
+
+### Examples of Proper Test Organization
+
+#### Example: Library Unit Test (Mocking DB)
+```rust
+// File: libs/handlers/src/some_handler.rs
+use crate::db_trait::DbConnection; // Using a trait for DI
+use mockall::mock;
+
+async fn handle_request(conn: &impl DbConnection, item_id: Uuid) -> Result<Item> {
+    conn.find_item(item_id).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mockall::predicate::*;
+
+    // Define the trait
+    #[async_trait::async_trait]
+    trait DbConnection {
+        async fn find_item(&self, id: Uuid) -> Result<Item>;
+    }
+
+    // Create the mock
+    mock! {
+        MyDbConnection {} // Name of the mock struct
+        #[async_trait::async_trait]
+        impl DbConnection for MyDbConnection { // Implement the trait
+            async fn find_item(&self, id: Uuid) -> Result<Item>;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_handle_request_success() -> Result<()> {
+        let item_id = Uuid::new_v4();
+        let expected_item = Item { id: item_id, name: "Test".to_string() };
+
+        let mut mock_conn = MockMyDbConnection::new();
+        mock_conn.expect_find_item()
+            .with(eq(item_id))
+            .times(1)
+            .returning(move |_| Ok(expected_item.clone()));
+
+        let result = handle_request(&mock_conn, item_id).await?;
+
+        assert_eq!(result, expected_item);
+        Ok(())
+    }
+}
+```
+
+#### Example: Library Integration Test (Using `TestDb`)
+```rust
+// File: libs/handlers/tests/metrics/delete_metric_handler_test.rs
+use database::test_utils::{TestDb, insert_test_metric_file, cleanup_test_data};
+use database::pool::get_pg_pool; // To verify deletion
+use database::schema::metric_files;
+use diesel::prelude::*;
+use diesel_async::RunQueryDsl;
+use handlers::metrics::delete_metric_handler; // The real handler
+use anyhow::Result;
+use uuid::Uuid;
+
+#[tokio::test]
+async fn test_delete_metric_integration() -> Result<()> {
+    // Setup test data using database utilities
+    let test_db = TestDb::new().await?;
+    let owner_id = test_db.user_id;
+    let metric_file = test_db.create_test_metric_file(&owner_id).await?;
+    let metric_id = metric_file.id;
+    insert_test_metric_file(&metric_file).await?;
+
+    // Call the actual handler function
+    let result = delete_metric_handler(metric_id, &owner_id).await?;
+
+    // Verify the handler's effect (e.g., soft delete)
+    assert!(result.deleted_at.is_some());
+
+    // Optional: Verify directly in DB
+    let mut conn = get_pg_pool().get().await?;
+    let db_metric = metric_files::table
+        .filter(metric_files::id.eq(metric_id))
+        .select(metric_files::deleted_at)
+        .first::<Option<chrono::DateTime<chrono::Utc>>>(&mut conn)
+        .await?;
+    assert!(db_metric.is_some());
+
+    // Clean up test data using the helper
+    cleanup_test_data(&[metric_id]).await?;
+
+    Ok(())
+}
+```
+
+#### Example: Server Integration Test (Mocking Handler)
+```rust
+// File: server/tests/routing_test.rs
+mod common; // Assuming common/mod.rs contains build_test_app and mocks
+
+use axum::http::StatusCode;
+use axum_test_helper::TestClient;
+use common::build_test_app;
+use uuid::Uuid;
+
+#[tokio::test]
+async fn test_get_item_route_exists() {
+    let app = build_test_app(); // Builds router with MOCK handlers
+    let client = TestClient::new(app);
+    let item_id = Uuid::new_v4();
+
+    // Send request to the endpoint
+    let response = client.get(&format!("/items/{}", item_id)).send().await;
+
+    // Assert that the route exists and the MOCK handler returned OK
+    // We are NOT testing the real handler's logic here.
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_create_item_auth_middleware() {
+    let app = build_test_app(); // Assumes app uses a mock auth middleware
+    let client = TestClient::new(app);
+
+    // Send request - mock auth should allow it
+    let response = client
+        .post("/items")
+        .json(&serde_json::json!({ "name": "Test" }))
+        .send()
+        .await;
+
+    // Assert the MOCK handler's success code (e.g., CREATED)
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    // How to test *failure* depends on the mock auth implementation.
+    // It might involve sending a specific header to trigger failure in the mock.
+}
+```
+
+## General Testing Guidelines
+- All tests must be async and use `#[tokio::test]`.
+- Tests should be well-documented.
+- Each test should focus on a single piece of functionality.
+- Tests should be independent.
+- Use meaningful test names.
+- **Design for testability**: Favor dependency injection, separate logic from IO, use traits.
+
+## Unit Tests
+- **Location**: Inline with code using `#[cfg(test)]`.
+- **Scope**: Test individual functions/modules in isolation.
+- **External Dependencies**: MUST be mocked (Database, HTTP APIs, file system, time). Use `mockall` for traits/structs, `mockito` (async) for HTTP.
+- **Database**: Never connect to a real DB. Use trait-based mocks if DB interaction is needed.
+- **HTTP**: Use `mockito::Server::new_async().await`.
+
+## Integration Tests
+
+### Library Integration Tests (`libs/*/tests/`)
+- **Location**: In each library's `tests/` directory.
+- **Scope**: Test the public API of the library, including its interaction with external services relevant to that library (e.g., database tests interact with the DB).
+- **Database**: Use `database::test_utils` (`TestDb`, `insert_...`, `cleanup_test_data`) to manage test data in a real test database.
+- **External APIs**: Can use `mockito` if testing library functions that call external services.
+- **Isolation**: Tests should ideally not call functions from *other* libraries directly, focus on the current library's integration.
+
+### Server Integration Tests (`server/tests/`)
+- **Location**: `server/tests/`.
+- **Scope**: Test the assembled Axum application: routing, middleware, request/response cycle.
+- **Handlers**: Mocked (as described above) - do *not* test handler logic here.
+- **Database**: Only interact with the database via `database::test_utils` if *required* for testing middleware behavior (e.g., setting up a user for auth middleware).
+- **Testing Tool**: `axum_test_helper::TestClient` or similar in-memory tester.
+
+### Environment and Configuration
+- Use `.env.test` for test-specific environment variables (Database URLs, API keys).
+- Load config via `dotenv`. The `database` test setup might rely on environment variables being loaded beforehand.
+- Ensure `DATABASE_URL` points to a dedicated test database.
+
+### Database Setup for Integration Tests
+- **Initialization**: Assumes connection pools are initialized globally before tests start (e.g., using `#[ctor]` in `libs/database/src/lib.rs` or `tests/mod.rs`).
+- **Test Data Management**: ALWAYS use `database::test_utils`:
+  ```rust
+  #[tokio::test]
+  async fn test_something_with_db() -> Result<()> {
+      // Assumes pools are initialized
+      let test_db = TestDb::new().await?;
+      let user = test_db.create_test_user().await?;
+      let dashboard = test_db.create_test_dashboard_file(&user.id).await?;
+      insert_test_dashboard_file(&dashboard).await?;
+      let dashboard_id = dashboard.id;
+
+      // ... perform test actions ...
+
+      // Clean up the specific data created for this test
+      cleanup_test_data(&[dashboard_id]).await?;
+      Ok(())
+  }
+  ```
+- **Schema/Models**: Use the standard definitions from `database::schema` and `database::models`.
+- **Isolation**: `TestDb` provides context, but actual data isolation relies on careful use of `cleanup_test_data` at the end of each test.
+
+**IMPORTANT**: Integration tests should use the shared connection pools initialized once for the test run. Tests should *never* create their own pools manually.

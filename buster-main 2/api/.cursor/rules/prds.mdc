@@ -1,0 +1,230 @@
+---
+description: This is helpful for building and designing PRDs for our application and how to write them.
+globs: prds/**/*.md
+alwaysApply: false
+---
+# PRD (Product Requirements Document) Guidelines
+
+## Overview
+This document provides guidelines for creating and managing Product Requirements Documents (PRDs) in our codebase. All PRDs should follow the standardized template located at [template.md](mdc:prds/template.md)
+
+## PRD Structure
+
+### Location
+All PRDs should be stored in the `/prds` directory with the following structure:
+```
+/prds
+├── template.md          # The master template for all PRDs
+├── active/             # Active/In-progress PRDs
+│   ├── project_feature_name.md  # Project-level PRD
+│   ├── api_feature_component1.md  # Sub-PRD for component 1
+│   └── api_feature_component2.md  # Sub-PRD for component 2
+├── completed/          # Completed PRDs that have been shipped
+│   ├── project_completed_feature.md
+│   └── api_completed_component.md
+└── archived/           # Archived/Deprecated PRDs
+```
+
+### Naming Convention
+- Use snake_case for file names
+- Include a prefix for the type of change:
+  - `project_` for project-level PRDs that contain multiple sub-PRDs
+  - `feature_` for new features
+  - `enhancement_` for improvements
+  - `fix_` for bug fixes
+  - `refactor_` for code refactoring
+  - `api_` for API changes
+
+## Project PRDs and Sub-PRDs
+
+### Project PRD Structure
+Project PRDs serve as the main document for large features that require multiple components or endpoints. They should:
+
+1. Provide a high-level overview of the entire feature
+2. Break down the implementation into logical components
+3. Reference individual sub-PRDs for each component
+4. Track the status of each sub-PRD
+5. Define dependencies between sub-PRDs
+
+Example project PRD sections:
+```markdown
+## Implementation Plan
+
+The implementation will be broken down into six separate PRDs, each focusing on a specific endpoint:
+
+1. [Add Dashboard to Collections REST Endpoint](mdc:api_add_dashboards_to_collection.md)
+2. [Remove Dashboard from Collections REST Endpoint](mdc:api_remove_dashboards_from_collection.md)
+3. [Add Metric to Collections REST Endpoint](mdc:api_add_metrics_to_collection.md)
+4. [Remove Metric from Collections REST Endpoint](mdc:api_remove_metrics_from_collection.md)
+5. [Add Assets to Collection REST Endpoint](mdc:api_add_assets_to_collection.md)
+6. [Remove Assets from Collection REST Endpoint](mdc:api_remove_assets_from_collection.md)
+```
+
+### Sub-PRD Structure
+Sub-PRDs focus on specific components of the larger project. They should:
+
+1. Reference the parent project PRD
+2. Focus on detailed implementation of a specific component
+3. Include all technical details required for implementation
+4. Be independently implementable (when possible)
+5. Follow the standard PRD template
+
+### Enabling Concurrent Development
+
+The project PRD and sub-PRD structure is designed to enable efficient concurrent development by:
+
+1. **Clear Component Boundaries**: Each sub-PRD should have well-defined boundaries that minimize overlap with other components.
+
+2. **Explicit Dependencies**: The project PRD should clearly state which sub-PRDs depend on others, allowing teams to plan their work accordingly.
+
+3. **Interface Definitions**: Each sub-PRD should define clear interfaces for how other components interact with it, reducing the risk of integration issues.
+
+4. **Conflict Identification**: The project PRD should identify potential areas of conflict between concurrently developed components and provide strategies to mitigate them.
+
+5. **Integration Strategy**: The project PRD should define how and when components will be integrated, including any feature flag strategies to allow incomplete features to be merged without affecting production.
+
+### Example Workflow
+
+1. **Project Planning**:
+   - Create the project PRD with a clear breakdown of components
+   - Define dependencies and development order
+   - Identify which components can be developed concurrently
+
+2. **Development Kickoff**:
+   - Begin work on foundation components that others depend on
+   - Once foundation is complete, start concurrent development of independent components
+   - Regularly update the project PRD with status changes
+
+3. **Integration**:
+   - Follow the integration strategy defined in the project PRD
+   - Address any conflicts that arise during integration
+   - Update the project PRD with lessons learned
+
+4. **Completion**:
+   - Move completed PRDs to the `/prds/completed` directory
+   - Update the project PRD to reflect completion
+   - Document any deviations from the original plan
+
+## Using the Template
+
+### Getting Started
+1. For a new project with multiple components:
+   - Create a project-level PRD using [project_template.md](mdc:prds/project_template.md)
+   - Place it in the `/prds/active` directory with prefix `project_`
+   - Create sub-PRDs for each component using [sub_prd_template.md](mdc:prds/sub_prd_template.md) with appropriate prefixes
+
+2. For a standalone feature:
+   - Copy [template.md](mdc:prds/template.md) to create a new PRD
+   - Place it in the `/prds/active` directory
+   - Fill out each section following the template's guidelines
+
+### Key Sections to Focus On
+The template [template.md](mdc:prds/template.md) provides comprehensive sections. Pay special attention to:
+
+1. **Problem Statement**
+   - Must clearly articulate the current state
+   - Include measurable impact
+   - Reference any relevant metrics or data
+
+2. **Technical Design**
+   - Include all affected components
+   - Document ALL file changes (new/modified/deleted)
+   - Provide actual code examples
+   - Include database migrations if needed
+
+3. **Implementation Plan**
+   - Break down into deployable phases
+   - Include clear success criteria
+   - List dependencies between phases
+   - Provide testing strategy for each phase
+   - For project PRDs, reference all sub-PRDs with their status
+
+4. **Testing Strategy**
+   - Unit test requirements
+   - Integration test scenarios
+
+## Best Practices
+
+### Project PRD Best Practices
+1. Keep the project PRD focused on high-level architecture and component relationships
+2. Clearly define the scope of each sub-PRD
+3. Maintain a status indicator for each sub-PRD ( Complete, ⏳ In Progress, Upcoming)
+4. Update the project PRD when sub-PRDs are completed
+5. Include a visual representation of component relationships when possible
+6. Define clear interfaces between components
+7. **Explicitly define the order in which sub-PRDs should be implemented**
+8. **Identify which sub-PRDs can be developed concurrently without conflicts**
+9. **Document dependencies between sub-PRDs to prevent blocking issues**
+10. **Provide strategies for avoiding conflicts during concurrent development**
+11. **Establish clear integration points for components developed in parallel**
+
+### Sub-PRD Best Practices
+1. Always reference the parent project PRD
+2. Focus on detailed implementation of a specific component
+3. Include all technical details required for implementation
+4. Ensure consistency with other sub-PRDs in the same project
+5. Follow the standard PRD template structure
+
+### Documentation
+1. Use clear, concise language
+2. Include code examples where relevant
+3. Document assumptions and dependencies
+4. Keep diagrams up to date
+5. Use Mermaid for diagrams when possible
+
+### Lifecycle Management
+1. Move PRDs between directories based on status:
+   - New PRDs → `/prds/active`
+   - Shipped PRDs → `/prds/completed`
+   - Deprecated PRDs → `/prds/archived`
+
+2. Update status section regularly:
+   -  Completed items
+   -  In Progress items
+   -  Upcoming items
+   -  Known Issues
+
+### Review Process
+1. Technical review
+   - Architecture alignment
+   - Security considerations
+   - Performance implications
+   - Testing coverage
+
+2. Product review
+   - Feature completeness
+   - User impact
+   - Business value
+   - Success metrics
+
+## Common Pitfalls to Avoid
+1. Incomplete technical specifications
+2. Missing file change documentation
+3. Unclear success criteria
+4. Insufficient testing strategy
+5. No rollback plan
+6. Missing security considerations
+7. Undefined monitoring metrics
+8. Inconsistencies between project PRD and sub-PRDs
+9. Overlapping responsibilities between sub-PRDs
+10. Missing dependencies between sub-PRDs
+
+## Example PRDs
+Reference these example PRDs for guidance:
+- Project PRD: [Collections REST Endpoints](mdc:prds/active/project_collections_rest_endpoints.md)
+- Sub-PRD: [Add Metrics to Collection](mdc:prds/active/api_add_metrics_to_collection.md)
+- Project Template: [project_template.md](mdc:prds/project_template.md)
+- Sub-PRD Template: [sub_prd_template.md](mdc:prds/sub_prd_template.md)
+- Standard Template: [template.md](mdc:prds/template.md)
+
+## Checklist Before Submission
+- [ ] All template sections completed
+- [ ] Technical design is detailed and complete
+- [ ] File changes are documented
+- [ ] Implementation phases are clear (can be as many as you need)
+- [ ] Testing strategy is defined
+- [ ] Security considerations addressed
+- [ ] Dependencies and Files listed
+- [ ] File References included
+- [ ] For project PRDs: all sub-PRDs are referenced with status
+- [ ] For sub-PRDs: parent project PRD is referenced

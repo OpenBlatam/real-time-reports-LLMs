@@ -1,0 +1,79 @@
+---
+description: Creating tan stack query options to be consuming in providers and api calls
+globs: src/api/query_keys/**/*
+alwaysApply: false
+---
+# Query Keys Folder Rules
+
+## Overview
+The `query-keys` folder is a structured directory that contains files, each serving as a **namespace** for a specific API. These files define TanStack React Query options, ensuring a consistent and maintainable approach to managing query keys.
+
+## Structure
+Each file in this folder represents a distinct **namespace** corresponding to an API domain. Within these files, query options must be defined using the `queryOptions` utility from `@tanstack/react-query`.
+
+### Example
+Below is an example of how query options should be structured within a file:
+
+```ts
+import { queryOptions } from '@tanstack/react-query';
+import type { BusterChat, BusterChatListItem } from '@/api/asset_interfaces';
+import type { GetChatListParams } from '@/api/request_interfaces/chats';
+import { type getListLogs } from '@/api/buster_rest/chats';
+
+const chatsGetChat = (chatId: string) =>
+  queryOptions<BusterChat>({
+    queryKey: ['chats', 'get', chatId] as const,
+    staleTime: 10 * 1000
+  });
+
+const chatsGetList = (filters?: Parameters<typeof getListLogs>[0]>) =>
+  queryOptions<BusterChatListItem[]>({
+    queryKey: ['chats', 'list', filters] as const,
+    staleTime: 10 * 1000
+  });
+
+export const chatQueryKeys = {
+ chatsGetChat,
+ chatsGetList
+};
+```
+
+## Naming Conventions
+- Each file should follow a **singular, lowercase** naming convention that represents the API namespace (e.g., `chats.ts`, `users.ts`).
+- Query keys should use a structured array format: `[namespace, action, identifier]`.
+- Exported objects should map endpoint-like keys to their respective query functions.
+
+## Query Option Requirements
+- Every query must be wrapped in `queryOptions<T>()` to ensure type safety.
+- `queryKey` must be a **constant tuple** to prevent unnecessary re-renders.
+- `staleTime` should be explicitly set based on the expected data refresh frequency.
+- All query options must be **exported in a structured object**, similar to `chatQueryKeys`, to maintain consistency and ease of access across the application.
+
+## Common Query Keys File
+There is also a `common.ts` file that consolidates **all** namespaced query keys into a single exported object. All new query namespaces must be added to this file to ensure uniform access across the application.
+
+### Example Structure of `common.ts`
+```ts
+import { chatQueryKeys } from './chat';
+import { collectionQueryKeys } from './collection';
+import { userQueryKeys } from './users';
+import { dashboardQueryKeys } from './dashboard';
+import { metricsQueryKeys } from './metric';
+import { searchQueryKeys } from './search';
+import { termsQueryKeys } from './terms';
+import { datasourceQueryKeys } from './datasources';
+
+export const queryKeys = {
+  ...chatQueryKeys,
+  ...collectionQueryKeys,
+  ...userQueryKeys,
+  ...dashboardQueryKeys,
+  ...metricsQueryKeys,
+  ...searchQueryKeys,
+  ...termsQueryKeys,
+  ...datasourceQueryKeys
+};
+```
+
+By following these guidelines, we ensure consistency, readability, and optimal caching behavior in our TanStack React Query implementation.
+

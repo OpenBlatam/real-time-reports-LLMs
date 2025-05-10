@@ -1,0 +1,88 @@
+include:
+  - supabase/docker-compose.yml
+
+services:
+  redis:
+    image: redis
+    container_name: buster-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - buster_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  api:
+    image: ghcr.io/buster-so/buster/api:latest-arm64
+    container_name: buster-api
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - POOLER_URL=${POOLER_URL}
+      - BUSTER_URL=${BUSTER_URL}
+      - BUSTER_WH_TOKEN=${BUSTER_WH_TOKEN}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - COHERE_API_KEY=${COHERE_API_KEY}
+      - ENVIRONMENT=${ENVIRONMENT}
+      - LOG_LEVEL=DEBUG
+      - RERANK_API_KEY=${RERANK_API_KEY}
+      - RERANK_MODEL=${RERANK_MODEL}
+      - RERANK_BASE_URL=${RERANK_BASE_URL}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - RUST_LOG=debug
+    ports:
+      - "3001:3001"
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      redis:
+        condition: service_healthy
+      supavisor:
+        condition: service_healthy
+      kong:
+        condition: service_healthy
+
+  web:
+    image: ghcr.io/buster-so/buster/web:latest-arm64
+    container_name: buster-web
+    env_file:
+      - .env
+    depends_on:
+      api:
+        condition: service_healthy
+    network_mode: "service:api"
+
+  # Pausing this for local deployments until we can build out better multi-model support.
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: buster-litellm
+    volumes:
+      - ./litellm_config/config.yaml:/config.yaml
+    command: ["--config", "/config.yaml", "--port", "4001"]
+    ports:
+      - "4001:4001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4001/health/readiness"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  buster_redis_data:

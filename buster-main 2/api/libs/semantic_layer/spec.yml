@@ -1,0 +1,36 @@
+# Schema specification for the model structure
+- name: string # Required
+  description: string # Optional
+  dimensions:
+    - name: string # Required
+      description: string # Optional
+      type: string # Optional, inferred if omitted
+      searchable: boolean # Optional, default: false
+      options: [string] # Optional, default: null
+  measures:
+    - name: string # Required
+      description: string # Optional
+      type: string # Optional, inferred if omitted
+  metrics:
+    - name: string # Required
+      expr: string # Required, can use model.column from entities
+      description: string # Optional
+      args: # Optional, required only if expr contains arguments, default: null
+        - name: string # Required
+          type: string # Required
+          description: string # Optional
+  filters:
+    - name: string # Required
+      expr: string # Required, can use model.column from entities
+      description: string # Optional
+      args: # Optional, required only if expr contains arguments, default: null
+        - name: string # Required
+          type: string # Required
+          description: string # Optional
+  entities:
+    - name: string # Required
+      primary_key: string # Required
+      foreign_key: string # Required
+      type: string # Optional, e.g., "LEFT", "INNER"; LLM decides if omitted
+      cardinality: string # Optional, e.g., "one-to-many", "many-to-many"
+      description: string # Optional

@@ -1,0 +1,136 @@
+name: Release Homebrew Tap for Buster CLI
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      homebrew_tap_rw: # Secret for pushing to buster-so/buster-homebrew
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The release tag to use (e.g., v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write # Allows the workflow to commit to the tap repository if using GITHUB_TOKEN, though homebrew_tap_rw is primary for cross-repo
+
+jobs:
+  release:
+    runs-on: blacksmith 
+    steps:
+    - name: Checkout Homebrew tap repository
+      uses: actions/checkout@v4
+      with:
+        repository: buster-so/buster-homebrew # Target tap repository
+        ref: 'main' # Or your default branch for the tap
+        token: ${{ secrets.homebrew_tap_rw }}
+
+    - name: Download macOS ARM64 package
+      uses: robinraju/release-downloader@v1.12
+      with:
+        repository: "buster-so/buster" # Source of the CLI releases
+        tag: ${{ inputs.tag }} # e.g., v0.1.0
+        fileName: "buster-cli-darwin-arm64.tar.gz" # Exact asset name
+
+    - name: Download macOS Intel package
+      uses: robinraju/release-downloader@v1.12
+      with:
+        repository: "buster-so/buster"
+        tag: ${{ inputs.tag }}
+        fileName: "buster-cli-darwin-x86_64.tar.gz"
+
+    - name: Download Linux Intel package
+      uses: robinraju/release-downloader@v1.12
+      with:
+        repository: "buster-so/buster"
+        tag: ${{ inputs.tag }}
+        fileName: "buster-cli-linux-x86_64.tar.gz"
+
+    - name: Generate and Push Formula File
+      run: |
+        set -e # Exit immediately if a command exits with a non-zero status.
+
+        echo "Calculating SHA256 checksums..."
+        darwin_arm64_hash=$(shasum -a 256 buster-cli-darwin-arm64.tar.gz | awk '{ print $1 }')
+        darwin_x86_64_hash=$(shasum -a 256 buster-cli-darwin-x86_64.tar.gz | awk '{ print $1 }')
+        linux_x86_64_hash=$(shasum -a 256 buster-cli-linux-x86_64.tar.gz | awk '{ print $1 }')
+
+        echo "Darwin ARM64 SHA: ${darwin_arm64_hash}"
+        echo "Darwin x86_64 SHA: ${darwin_x86_64_hash}"
+        echo "Linux x86_64 SHA: ${linux_x86_64_hash}"
+
+        input_tag="${{ inputs.tag }}"
+        # Strip the leading 'v' if present, to get the version number like "0.1.0"
+        version="${input_tag#v}"
+        echo "Input tag: ${input_tag}, Version: ${version}"
+
+        formula_file="Formula/buster.rb" # Name of the formula file in the tap repository
+
+        echo "Generating ${formula_file}..."
+        echo '# typed: false' > "${formula_file}"
+        echo '# frozen_string_literal: true' >> "${formula_file}"
+        echo '' >> "${formula_file}"
+        echo 'class Buster < Formula' >> "${formula_file}"
+        echo '  desc "Command-line interface for using buster Buster"' >> "${formula_file}"
+        echo '  homepage "https://github.com/buster-so/buster"' >> "${formula_file}"
+        echo "  version \"${version}\"" >> "${formula_file}"
+        echo '  license "MIT"' >> "${formula_file}"
+        echo '' >> "${formula_file}"
+        echo '  livecheck do' >> "${formula_file}"
+        echo '    url :stable' >> "${formula_file}"
+        echo '    strategy :github_latest' >> "${formula_file}"
+        echo '    regex(/^v?(\d+(?:\.\d+)*)$/i)' >> "${formula_file}"
+        echo '  end' >> "${formula_file}"
+        echo '' >> "${formula_file}"
+        echo '  on_macos do' >> "${formula_file}"
+        echo '    on_arm do' >> "${formula_file}"
+        echo "      url \"https://github.com/buster-so/buster/releases/download/${input_tag}/buster-cli-darwin-arm64.tar.gz\"" >> "${formula_file}"
+        echo "      sha256 \"${darwin_arm64_hash}\"" >> "${formula_file}"
+        echo '    end' >> "${formula_file}"
+        echo '    on_intel do' >> "${formula_file}"
+        echo "      url \"https://github.com/buster-so/buster/releases/download/${input_tag}/buster-cli-darwin-x86_64.tar.gz\"" >> "${formula_file}"
+        echo "      sha256 \"${darwin_x86_64_hash}\"" >> "${formula_file}"
+        echo '    end' >> "${formula_file}"
+        echo '  end' >> "${formula_file}"
+        echo '' >> "${formula_file}"
+        echo '  on_linux do' >> "${formula_file}"
+        echo "    url \"https://github.com/buster-so/buster/releases/download/${input_tag}/buster-cli-linux-x86_64.tar.gz\"" >> "${formula_file}"
+        echo "    sha256 \"${linux_x86_64_hash}\"" >> "${formula_file}"
+        echo '  end' >> "${formula_file}"
+        echo '' >> "${formula_file}"
+        echo '  def install' >> "${formula_file}"
+        echo '    bin.install "buster-cli" => "buster"' >> "${formula_file}"
+        echo '  end' >> "${formula_file}"
+        echo '' >> "${formula_file}"
+        echo '  test do' >> "${formula_file}"
+        echo '    assert_match "buster", shell_output("#{bin}/buster --help")' >> "${formula_file}"
+        echo '  end' >> "${formula_file}"
+        echo 'end' >> "${formula_file}"
+        # Ensure a final newline, some linters prefer it
+        echo '' >> "${formula_file}"
+
+        echo "--- Generated ${formula_file} ---"
+        cat "${formula_file}"
+        echo "---------------------------"
+
+        echo "Configuring git..."
+        git config user.name "Buster CLI Release Workflow"
+        git config user.email "actions@github.com"
+
+        echo "Adding and committing ${formula_file}..."
+        git add "${formula_file}"
+        
+        # Check if there are changes to commit
+        if git diff --staged --quiet; then
+          echo "No changes to commit to ${formula_file}."
+        else
+          git commit -m "Update ${formula_file} for version ${input_tag}"
+          echo "Pushing changes..."
+          git push
+          echo "Pushed updated ${formula_file} for version ${input_tag} to buster-so/buster-homebrew"
+        fi

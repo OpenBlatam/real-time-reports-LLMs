@@ -1,0 +1,9 @@
+name: 'Stop Supabase'
+description: 'Stops the Supabase local environment.'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Stop Supabase instance
+      shell: bash
+      run: supabase stop --no-backup

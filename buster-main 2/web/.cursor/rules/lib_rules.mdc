@@ -1,0 +1,50 @@
+---
+description: Rules for the components directory
+globs: src/lib/**/*
+alwaysApply: false
+---
+
+# Utils Directory Structure and Guidelines
+
+The `src/utils` directory contains global utility files that provide reusable helper functions across the application. Each file is organized by its specific domain (e.g., array.ts, text.ts, date.ts).
+
+## File Organization
+- Each utility file should focus on a single domain of functionality
+- Files should be named according to their domain (e.g., `array.ts`, `text.ts`, `date.ts`)
+- Keep files focused and cohesive - split into new files if functionality grows too diverse
+
+## TypeScript Requirements
+- All utility functions MUST have explicit TypeScript types for parameters and return values
+- Use generics when functions can work with multiple types
+- Avoid using `any` type - prefer `unknown` if type is truly uncertain
+- Include comprehensive type guards where necessary
+- Use union types and intersections appropriately to ensure type safety
+- Document complex types with TSDoc comments
+
+## Function Guidelines
+- Functions should be pure when possible
+- Each function should have a single responsibility
+- Include TSDoc comments explaining the purpose, parameters, and return value
+- Add examples in the documentation for complex utilities
+- Include unit tests for all utility functions
+- Handle edge cases explicitly and document them
+
+## Example Structure
+```typescript
+/**
+ * Safely filters an array by removing null and undefined values
+ * @param arr - The input array that may contain null/undefined
+ * @returns A new array with null and undefined values removed
+ */
+export function filterNullable<T>(arr: (T | null | undefined)[]): T[] {
+  return arr.filter((item): item is T => item != null);
+}
+```
+
+## Best Practices
+- Export all utilities as named exports (not default exports)
+- Group related utilities in the same file
+- Keep functions small and focused
+- Prioritize type safety over convenience
+- Include error handling for edge cases
+- Use immutable patterns - don't modify input parameters

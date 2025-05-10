@@ -1,0 +1,68 @@
+---
+description: General structure for the api folder
+globs: src/api/**/*
+alwaysApply: false
+---
+# Cursor Rules
+
+This directory contains multiple folders and files that organize different aspects of our application. Below is an overview of the directory structure and how each component relates to the others.
+
+## Directory Structure
+
+```
+.
+├── asset_interfaces/
+├── buster_rest/
+├── buster_socket/
+├── buster_socket_query/
+├── next/
+├── other/
+├── query_keys/
+├── request_interfaces/
+├── createInstance.ts
+└── createServerInstance.ts
+```
+
+### Folder and File Descriptions
+
+#### `asset_interfaces/`
+This folder contains TypeScript interfaces related to assets. These interfaces define the structure of asset-related data that flows through different parts of the application. It also contains all the response types from API responses.
+
+#### `buster_rest/`
+Holds the REST API client implementation. It includes methods for interacting with our backend services using HTTP requests. This is used for traditional request-response operations. It imports response types from `asset_interfaces/` and request types from `request_interfaces/` to ensure type safety.
+
+#### `buster_socket/`
+Contains the WebSocket client implementation. It defines how the application interacts with real-time data streams and bidirectional communication. It also contains all the WebSocket routes and their namespaces. It imports response types from `asset_interfaces/` and request types from `request_interfaces/` to standardize data structures.
+
+#### `buster_socket_query/`
+Extends `buster_socket/` by integrating WebSocket requests with React Query. This allows for seamless state management of real-time data within the application. It also contains helper functions for context providers.
+
+#### `next/`
+Houses Next.js-related utilities and configurations, ensuring proper integration with the Next.js framework. It also contains Axios instances for the Next API.
+
+#### `other/`
+A miscellaneous folder for additional utilities, helpers, or files that don't fit neatly into other categories. It contains Axios instances for interacting with external APIs. It is rare we should use this.
+
+#### `query_keys/`
+Contains all TanStack Query key definitions organized by namespace. These query keys are used across the application to maintain consistent cache keys for data fetching operations. Each file corresponds to a specific API namespace (e.g., chat, terms, metrics).
+
+#### `request_interfaces/`
+Defines TypeScript interfaces for various request payloads used across `buster_rest/`, `buster_socket/`, and `buster_socket_query/`. These interfaces standardize request structures and improve type safety.
+
+### Standalone Files
+
+#### `createInstance.ts`
+Provides a utility function for creating instances of API clients. This is commonly used to configure REST and WebSocket connections dynamically.
+
+#### `createServerInstance.ts`
+Similar to `createInstance.ts`, but tailored for server-side API calls, ensuring proper handling of requests from server-side environments.
+
+## How Everything Fits Together
+
+- `asset_interfaces/` and `request_interfaces/` define the TypeScript types used across the entire project.
+- `buster_rest/`, `buster_socket/`, and `buster_socket_query/` handle communication with backend services and import necessary types from `asset_interfaces/` and `request_interfaces/`.
+- `next/` provides Next.js-specific configurations and utilities.
+- `other/` holds any additional utilities.
+- The standalone files (`createInstance.ts`, `createReactQuery.ts`, and `createServerInstance.ts`) act as entry points for API clients and data fetching mechanisms.
+
+This structure ensures clear separation of concerns while maintaining flexibility in how different services interact with each other.

@@ -1,0 +1,66 @@
+[package]
+name = "buster_server"
+version = "0.1.4"
+edition = "2021"
+default-run = "buster_server"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Use workspace dependencies
+anyhow = { workspace = true }
+async-compression = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+cohere-rust = { workspace = true }
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+diesel_migrations = { workspace = true }
+dotenv = { workspace = true }
+futures = { workspace = true }
+html-escape = { workspace = true }
+indexmap = { workspace = true }
+jsonwebtoken = { workspace = true }
+lazy_static = { workspace = true }
+rayon = { workspace = true }
+redis = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
+resend-rs = { workspace = true }
+rustls = { workspace = true }
+sentry = { workspace = true }
+sentry-tower = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+
+# Local dependencies
+handlers = { path = "../libs/handlers" }
+litellm = { path = "../libs/litellm" }
+database = { path = "../libs/database" }
+agents = { path = "../libs/agents" }
+query_engine = { path = "../libs/query_engine" }
+middleware = { path = "../libs/middleware" }
+sharing = { path = "../libs/sharing" }
+search = { path = "../libs/search" }
+stored_values = { path = "../libs/stored_values" }
+
+# Workspace Libraries
+dataset_security = { path = "../libs/dataset_security" }
+
+# Add the new dependency
+tokio-cron-scheduler = { workspace = true }
+
+[dev-dependencies]
+mockito = { workspace = true }
+tokio-test = { workspace = true }
+async-trait = { workspace = true }
+
+# Add the new dependency
+# dataset_security = { path = "../libs/dataset_security" }

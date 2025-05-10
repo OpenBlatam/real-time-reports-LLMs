@@ -1,0 +1,120 @@
+[workspace]
+members = [
+    "server",
+    "libs/handlers",
+    "libs/litellm",
+    "libs/database",
+    "libs/agents",
+    "libs/query_engine",
+    "libs/sharing",
+    "libs/sql_analyzer",
+    "libs/search",
+    "libs/dataset_security",
+    "libs/email",
+    "libs/stored_values",
+    "libs/semantic_layer",
+    "libs/raindrop",
+]
+resolver = "2"
+
+# Define shared dependencies for all workspace members
+[workspace.dependencies]
+anyhow = "1.0.86"
+chrono = { version = "=0.4.38", features = ["serde"] }
+serde = { version = "1.0.117", features = ["derive"] }
+serde_json = { version = "1.0.117", features = ["preserve_order"] }
+serde_yaml = "0.9.34"
+tokio = { version = "1.38.0", features = ["full"] }
+tracing = "0.1.40"
+uuid = { version = "1.8", features = ["serde", "v4", "v5"] }
+sha2 = "0.10.8"
+diesel = { version = "2", features = [
+    "uuid",
+    "chrono",
+    "serde_json",
+    "postgres",
+] }
+diesel-async = { version = "0.5.2", features = ["postgres", "bb8"] }
+futures = "0.3.30"
+async-trait = "0.1.85"
+thiserror = "2.0.12"
+tokio-test = "0.4.3"
+futures-util = "0.3"
+reqwest = { version = "0.12.4", features = ["json", "stream"] }
+dotenv = "0.15.0"
+mockito = "1.2.0"
+mockall = "0.12.1"
+bb8-redis = "0.18.0"
+indexmap = { version = "2.2.6", features = ["serde"] }
+once_cell = "1.20.2"
+rustls = { version = "0.23", features = ["ring"] }
+rustls-native-certs = "0.8"
+sqlx = { version = "0.8", features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "uuid",
+    "chrono",
+    "json",
+    "mysql",
+    "bigdecimal",
+] }
+tokio-postgres = "0.7"
+tokio-postgres-rustls = "0.13"
+regex = "1.10.6"
+sqlparser = { version = "0.54.0", features = ["visitor"] }
+arrow = { version = "54.0.0", features = ["json"] }
+async-compression = { version = "0.4.11", features = ["tokio"] }
+axum = { version = "0.7.5", features = ["ws"] }
+base64 = "0.21"
+cohere-rust = "0.6.0"
+gcp-bigquery-client = "0.24.1"
+jsonwebtoken = "9.3.0"
+lazy_static = "1.4.0"
+num-traits = "0.2.19"
+rand = "0.8.5"
+redis = { version = "0.27.5", features = [
+    "tokio-comp",
+    "tokio-rustls-comp",
+    "tls-rustls-webpki-roots",
+] }
+resend-rs = "0.10.0"
+sentry = { version = "0.37.0", features = ["tokio"] }
+sentry-tower = { version = "0.37.0", features = ["axum", "http"] }
+sentry-tracing = { version = "0.37.0"}
+serde_urlencoded = "0.7.1"
+snowflake-api = "0.11.0"
+tempfile = "3.10.1"
+tiberius = { version = "0.12.2", default-features = false, features = [
+    "chrono",
+    "rust_decimal",
+    "tds73",
+    "time",
+    "rustls",
+    "sql-browser-tokio",
+] }
+tiktoken-rs = "0.6.0"
+tokio-stream = "0.1.15"
+tokio-util = { version = "0.7.11", features = ["compat"] }
+tower = { version = "0.5.2" }
+tower-http = { version = "0.6.2", features = [
+    "cors",
+    "trace",
+    "compression-gzip",
+] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+url = "2.5.1"
+rayon = "1.10.0"
+diesel_migrations = "2.0.0"
+html-escape = "0.2.13"
+tokio-cron-scheduler = "0.13.0"
+tokio-retry = "0.3.0"
+
+[profile.release]
+debug = false
+incremental = true
+
+[profile.dev]
+incremental = true
+opt-level = 0      # Ensure this is 0 for faster debug builds
+debug = 1          # Reduce debug info slightly while keeping enough for backtraces

@@ -1,0 +1,231 @@
+---
+description: This is helpful documentation for building handlers in the project.
+globs: libs/handlers/**/*.rs
+alwaysApply: false
+---
+# Handler Rules and Best Practices
+
+## Overview
+Handlers are the core business logic components that implement functionality used by both REST and WebSocket endpoints. They are also often used by the CLI package. This document outlines the structure, patterns, and best practices for working with handlers.
+
+## File Structure
+- `libs/handlers/src/`
+  - `[domain]/` - Domain-specific modules (e.g., messages, chats, files, metrics)
+    - `mod.rs` - Re-exports handlers and types
+    - `types.rs` - Domain-specific data structures
+    - `*_handler.rs` - Individual handler implementations
+    - `helpers/` - Helper functions and utilities for handlers
+
+## Naming Conventions
+- Handler files should be named with the pattern: `[action]_[resource]_handler.rs`
+  - Example: `get_chat_handler.rs`, `delete_message_handler.rs`
+- Handler functions should follow the same pattern: `[action]_[resource]_handler`
+  - Example: `get_chat_handler()`, `delete_message_handler()`
+- Type definitions should be clear and descriptive
+  - Response types: `[Action][Resource]Response`
+
+## Handler Implementation Guidelines
+
+### Function Signatures
+```rust
+pub async fn action_resource_handler(
+    // Parameters should be decoupled from request types:
+    resource_id: Uuid,           // Individual parameters instead of request objects
+    options: Vec<String>,        // Specific data needed for the operation
+    user: User,                  // For authenticated user context
+    // Other contextual parameters as needed
+) -> Result<ActionResourceResponse> {
+    // Implementation
+}
+```
+
+### Decoupling from Request Types
+- Handlers should NOT take request types as inputs
+- Instead, use individual parameters that represent the exact data needed
+- This keeps handlers flexible and reusable across different contexts
+- The return type can be a specific response type, as this is what the handler produces
+
+### Error Handling
+- Use `anyhow::Result<T>` for return types
+- Provide descriptive error messages with context
+- Handle specific error cases appropriately
+- Log errors with relevant context
+- Example:
+```rust
+match operation() {
+    Ok(result) => Ok(result),
+    Err(diesel::NotFound) => Err(anyhow!("Resource not found")),
+    Err(e) => {
+        tracing::error!("Operation failed: {}", e);
+        Err(anyhow!("Operation failed: {}", e))
+    }
+}
+```
+
+### Database Operations
+- Use the connection pool: `get_pg_pool().get().await?`
+- Run concurrent operations when possible
+- For related operations, use sequential operations with error handling
+- Handle database-specific errors appropriately
+- Example:
+```rust
+let pool = get_pg_pool();
+let mut conn = pool.get().await?;
+
+diesel::update(table)
+    .filter(conditions)
+    .set(values)
+    .execute(&mut conn)
+    .await?
+```
+
+Example with related operations:
+```rust
+let pool = get_pg_pool();
+let mut conn = pool.get().await?;
+
+// First operation
+diesel::insert_into(table1)
+    .values(&values1)
+    .execute(&mut conn)
+    .await?;
+    
+// Second related operation
+diesel::update(table2)
+    .filter(conditions)
+    .set(values2)
+    .execute(&mut conn)
+    .await?;
+
+### Concurrency
+- Use `tokio::spawn` for concurrent operations
+- Use `futures::try_join_all` for parallel processing
+- Be mindful of connection pool limits
+- Example:
+```rust
+let thread_future = tokio::spawn(async move {
+    // Database operation 1
+});
+
+let messages_future = tokio::spawn(async move {
+    // Database operation 2
+});
+
+let (thread_result, messages_result) = tokio::join!(thread_future, messages_future);
+```
+
+### Logging
+- Use structured logging with `tracing`
+- Include relevant context in log messages
+- Log at appropriate levels (info, warn, error)
+- Example:
+```rust
+tracing::info!(
+    resource_id = %id,
+    user_id = %user.id,
+    "Processing resource action"
+);
+```
+
+### Type Definitions
+- Use `serde` for serialization/deserialization
+- Define clear, reusable types
+- Use appropriate validation
+- Example:
+```rust
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResourceResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub options: Vec<String>,
+}
+```
+
+## Integration with REST and WebSocket APIs
+- Handlers should be independent of transport mechanism
+- Same handler can be used by both REST and WebSocket endpoints
+- Handlers should focus on business logic, not HTTP/WebSocket specifics
+- Example:
+```rust
+// In REST route
+pub async fn rest_endpoint(
+    Json(payload): Json<RestRequest>,
+    user: User,
+) -> Result<Json<HandlerResponse>, AppError> {
+    // Extract specific parameters from the request
+    let result = handler::action_resource_handler(
+        payload.id,
+        payload.options,
+        user
+    ).await?;
+    Ok(Json(result))
+}
+
+// In WebSocket handler
+async fn ws_message_handler(message: WsMessage, user: User) -> Result<WsResponse> {
+    let payload: WsRequest = serde_json::from_str(&message.payload)?;
+    // Extract specific parameters from the request
+    let result = handler::action_resource_handler(
+        payload.id,
+        payload.options,
+        user
+    ).await?;
+    Ok(WsResponse::new(result))
+}
+```
+
+## CLI Integration
+- CLI commands should extract specific parameters from arguments
+- CLI commands should use the same handlers as the API when possible
+- Example:
+```rust
+// In CLI command
+pub fn cli_command(args: &ArgMatches) -> Result<()> {
+    // Extract parameters from args
+    let id = Uuid::parse_str(args.value_of("id").unwrap())?;
+    let options = args.values_of("options")
+        .map(|vals| vals.map(String::from).collect())
+        .unwrap_or_default();
+    
+    let result = tokio::runtime::Runtime::new()?.block_on(async {
+        handler::action_resource_handler(id, options, mock_user()).await
+    })?;
+    
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+```
+
+## Testing
+- Write unit tests for handlers
+- Mock database and external dependencies
+- Test error cases and edge conditions
+- Example:
+```rust
+#[tokio::test]
+async fn test_action_resource_handler() {
+    // Setup test data
+    let id = Uuid::new_v4();
+    let options = vec!["option1".to_string(), "option2".to_string()];
+    let user = mock_user();
+    
+    // Call handler
+    let result = action_resource_handler(id, options, user).await;
+    
+    // Assert expectations
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(response.field, expected_value);
+}
+```
+
+## Common Patterns
+- Retrieve data from database
+- Process and transform data
+- Interact with external services
+- Return structured response
+- Handle errors and edge cases
+- Log relevant information
+
+## Glob Pattern
+The glob pattern for this rule is: `libs/handlers/**/*.rs`

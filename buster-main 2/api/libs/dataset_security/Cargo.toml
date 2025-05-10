@@ -1,0 +1,27 @@
+[package]
+name = "dataset_security"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Workspace dependencies
+anyhow = { workspace = true }
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }
+
+# Internal workspace dependencies
+database = { path = "../database" }
+
+# Development dependencies
+[dev-dependencies]
+dotenv = { workspace = true }
+tokio-test = { workspace = true }
+# Add other workspace dev dependencies as needed 

@@ -1,0 +1,29 @@
+[package]
+name = "stored_values"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+sqlx = { workspace = true, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros"] }
+uuid = { workspace = true, features = ["v4"] }
+tracing = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+indexmap = { workspace = true }
+futures = { workspace = true }
+serde_yaml = { workspace = true }
+
+database = { path = "../database" }
+query_engine = { path = "../query_engine" }
+# Add pgvector feature if not already enabled globally
+# sqlx = { workspace = true, features = ["pgvector"] } # Assuming pgvector is managed via workspace
+
+# ---> Add litellm dependency <---
+litellm = { path = "../litellm" }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+# Add test utilities if needed later 

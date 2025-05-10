@@ -1,0 +1,150 @@
+---
+description: Rules for the buster_rest API directory
+globs: src/api/buster_rest/**/*
+alwaysApply: false
+---
+# Buster REST API Rules
+
+- Follow RESTful design principles
+- Use camelCase for variable and function names
+- Include proper error handling for all endpoints
+
+# API Request Standards
+- All API requests MUST use the `mainApi` axios instance for client-side fetching
+- Each GET request may have two versions, the server version is optional unless specified otherwise:
+  - Client version using `mainApi`
+  - Server version using `serverFetch` with '_server' suffix
+- Import statements needed:
+  - `import { mainApi } from '../instances'`
+  - `import { serverFetch } from '@/api/createServerInstance'`
+- Response interfaces MUST be imported from '@/api/asset_interfaces/{namespace}'
+- Request functions should be async/await
+- Include proper TypeScript types for params and response
+- Use consistent parameter handling with defaults when needed
+
+Example request:
+```typescript
+import { mainApi } from '../instances';
+import { serverFetch } from '@/api/createServerInstance';
+import { BusterDatasetListItem } from '@/api/asset_interfaces/datasets';
+
+// Client-side fetch version
+export const getDatasets = async (params?: {
+  /** Current page number */
+  page?: number;
+  /** Number of items to display per page */
+  page_size?: number;
+  /** Search term to filter datasets */
+  search?: string;
+  /** When true, returns admin view of datasets */
+  admin_view?: boolean;
+  /** When true, returns only imported datasets */
+  imported?: boolean;
+  /** When true, returns only enabled datasets */
+  enabled?: boolean;
+  /** Filter by permission group ID */
+  permission_group_id?: string;
+  /** Filter by owner */
+  belongs_to?: string;
+}) => {
+  const { page = 0, page_size = 1000, ...allParams } = params || {};
+  return mainApi
+    .get<BusterDatasetListItem[]>(`/datasets`, { params: { page, page_size, ...allParams } })
+    .then((res) => res.data);
+};
+
+// Server-side fetch version
+export const getDatasets_server = async (params?: Parameters<typeof getDatasets>[0]) => {
+  const { page = 0, page_size = 1000, ...allParams } = params || {};
+  return await serverFetch<BusterDatasetListItem[]>(`/datasets`, {
+    params: { page, page_size, ...allParams }
+  });
+};
+```
+
+# Interface Standards
+- Response interfaces should be defined in '@/api/asset_interfaces/{namespace}'
+- Local request parameter interfaces should be defined in local `interfaces.ts` or on the function themselves.
+- If there is a server request, try to use the Parameters syntax (params: Parameters<typeof addAssetToCollection>[0])
+- Keep interface naming consistent with the API response structure
+
+# React Query Standards
+- Each namespace must include a `queryRequests.ts` file
+- Use `useQuery` and `useMutation` from tanstack
+- Query hooks should be prefixed with 'useGet', 'useUpdate', 'useDelete', etc.
+- Each GET request should have a corresponding prefetch function
+- Prefetch functions should:
+  - Be named `prefetchGet{ResourceName}`
+  - Accept the same parameters as the query hook
+  - Accept an optional QueryClient parameter
+  - Use the server version of the request function (with '_server' suffix)
+- Always provide proper TypeScript types for query results
+- Use consistent pattern for queryKey construction. You must use queryKey option config from the /src/api/buster_socket_query folder.
+
+Example React Query hook and prefetch:
+```typescript
+import { useQuery } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/api/query_keys';
+
+export const useGetDatasets = (params?: Parameters<typeof getDatasets>[0]) => {
+  const queryFn = useMemoizedFn(() => {
+    return getDatasets(params);
+  });
+
+  const res = useQuery({
+    ...queryKeys.datasetsList(params),
+    queryFn
+  });
+
+  return {
+    ...res,
+    data: res.data || []
+  };
+};
+
+export const prefetchGetDatasets = async (
+  params?: Parameters<typeof getDatasets>[0],
+  queryClientProp?: QueryClient
+) => {
+  const queryClient = queryClientProp || new QueryClient();
+
+  await queryClient.prefetchQuery({
+    ...queryKeys.datasetsList(params),
+    queryFn: () => getDatasets_server(params)
+  });
+
+  return queryClient;
+};
+```
+
+# Directory Structure
+- Each folder within this directory represents a distinct API namespace
+- Every namespace folder MUST contain:
+  - `index.ts`: Main entry point that exports from all other files
+  - `requests.ts`: Contains all API request functions
+  - `interfaces.ts`: Contains TypeScript interfaces and types (if applicable)
+  - `queryRequests.ts`: Contains React Query hooks for the API endpoints
+
+# Special Cases
+- The `nextjs` folder is exempt from the standard directory structure
+- This folder contains Next.js specific utilities and helpers
+- Files in this folder should be organized by functionality (e.g., `image.ts`, `support.ts`)
+
+Example structure:
+```
+buster_rest/
+├── users/
+│   ├── index.ts
+│   ├── requests.ts
+│   ├── queryRequests.ts
+│   └── interfaces.ts
+├── assets/
+│   ├── index.ts
+│   ├── requests.ts
+│   ├── queryRequests.ts
+│   └── interfaces.ts
+├── nextjs/
+│   ├── image.ts
+│   └── support.ts
+```

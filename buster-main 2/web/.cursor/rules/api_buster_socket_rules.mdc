@@ -1,0 +1,125 @@
+---
+description: Rules for how the buster_socket api directory shoudl function
+globs: src/api/buster_socket/**/*
+alwaysApply: false
+---
+# API Structure Rules
+
+## Directory Structure
+Each API namespace should follow this specific structure:
+
+```
+src/api/{namespace}/
+├── {namespace}Requests.ts   # Contains all request interfaces and types
+├── {namespace}Responses.ts  # Contains all response interfaces and types
+└── index.ts                # Exports all public interfaces and functions
+```
+
+## File Requirements
+
+### {namespace}Requests.ts
+- Must contain all request interfaces and types for the namespace
+- Each request interface should be prefixed with the namespace
+- Example: `interface UserCreateRequest { ... }`
+- Must include proper TypeScript types and documentation
+
+### {namespace}Responses.ts
+- Must contain all response interfaces and types for the namespace
+- Each response interface should be prefixed with the namespace
+- Example: `interface UserCreateResponse { ... }`
+- Must include proper TypeScript types and documentation
+
+### index.ts
+- Must export all public interfaces, types, and functions
+- Should re-export from both requests and responses files
+- Should contain any namespace-specific utility functions
+- Must use named exports (no default exports)
+
+## Naming Conventions
+- All file names must use PascalCase for namespace names
+- All interface names must be prefixed with the namespace
+- All type names must be prefixed with the namespace
+- Use descriptive names that clearly indicate purpose
+
+## Documentation Requirements
+- Each interface must have TSDoc comments explaining its purpose
+- Each property in interfaces must be documented
+- Include examples where appropriate
+- Document any validation requirements or constraints
+
+## Type Safety
+- Avoid using `any` type. We should NEVER use any types.
+- Use strict TypeScript configurations
+- Define proper type guards when necessary
+- Use generics appropriately for reusable types
+
+## Example Structure
+```typescript
+// {namespace}Requests.ts
+export interface {Namespace}CreateRequest {
+  // properties
+}
+
+// {namespace}Responses.ts
+export interface {Namespace}CreateResponse {
+  // properties
+}
+
+// index.ts
+export * from './{namespace}Requests';
+export * from './{namespace}Responses';
+```
+
+## Socket Request Type Pattern
+All socket request types should follow this specific pattern:
+
+```typescript
+/**
+ * Request type for [purpose of the request].
+ * @interface [RequestName]EmitPayload
+ * @extends BusterSocketRequestBase
+ */
+export type [RequestName]EmitPayload = BusterSocketRequestBase<
+  '[endpoint/path]',
+  {
+    /** Description of property */
+    propertyName: PropertyType;
+  }
+>;
+```
+
+Each request type must:
+- Use TSDoc format documentation
+- Extend BusterSocketRequestBase with appropriate generic parameters
+- Include a string literal endpoint path as first generic parameter
+- Include a payload interface as second generic parameter
+- Document each property with TSDoc comments
+
+Example:
+```typescript
+/**
+ * Request type for retrieving a paginated list of chats.
+ * @interface ChatListEmitPayload
+ * @extends BusterSocketRequestBase
+ */
+export type ChatListEmitPayload = BusterSocketRequestBase<
+  '/chats/list',
+  {
+    /** Pagination token indicating the page number */
+    page_token: number;
+    /** Number of chat items to return per page */
+    page_size: number;
+    /** When true, shows all organization chats (admin only). When false, shows only user's chats */
+    admin_view: boolean;
+  }
+>;
+```
+
+## Additional Guidelines
+1. Keep files focused and single-responsibility
+2. Use TypeScript's strict mode
+3. Implement proper error handling types
+4. Follow consistent formatting
+5. Include proper type exports
+6. Maintain backward compatibility
+7. Use enums for fixed sets of values

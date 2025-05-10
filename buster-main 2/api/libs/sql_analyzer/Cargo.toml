@@ -1,0 +1,19 @@
+[package]
+name = "sql_analyzer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sqlparser = { workspace = true }  # For SQL parsing
+tokio = { workspace = true }      # For async operations
+anyhow = { workspace = true }     # For error handling
+serde = { workspace = true }      # For serialization
+thiserror = { workspace = true }  # For custom errors
+regex = { workspace = true }      # For pattern matching
+rand = { workspace = true }       # For random number generation
+
+[dev-dependencies]
+tokio-test = { workspace = true } # For async testing
+
+[features]
+default = []

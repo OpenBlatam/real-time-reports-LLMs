@@ -1,0 +1,118 @@
+import { Dropdown, DropdownItems } from '@/components/ui/dropdown';
+import React, { useMemo } from 'react';
+import { useChatIndividualContextSelector } from '../../../ChatContext';
+import { Copy, Trash, Pencil, DuplicatePlus, Star } from '@/components/ui/icons';
+import { Star as StarFilled } from '@/components/ui/icons/NucleoIconFilled';
+import { useDeleteChat, useDuplicateChat, useGetChat } from '@/api/buster_rest/chats';
+import { CHAT_HEADER_TITLE_ID } from '../ChatHeaderTitle';
+import { timeout } from '@/lib';
+import { BusterRoutes } from '@/routes';
+import { useAppLayoutContextSelector } from '@/context/BusterAppLayout';
+import { useBusterNotifications } from '@/context/BusterNotifications';
+import { assetParamsToRoute } from '@/lib/assets';
+import { useFavoriteStar } from '@/components/features/list';
+import { ShareAssetType } from '@/api/asset_interfaces/share';
+
+export const ChatContainerHeaderDropdown: React.FC<{
+  children: React.ReactNode;
+}> = React.memo(({ children }) => {
+  const { openSuccessMessage } = useBusterNotifications();
+  const chatId = useChatIndividualContextSelector((state) => state.chatId);
+  const onChangePage = useAppLayoutContextSelector((s) => s.onChangePage);
+  const { mutate: deleteChat, isPending: isDeleting } = useDeleteChat();
+  const { mutateAsync: duplicateChat, isPending: isDuplicating } = useDuplicateChat();
+  const currentMessageId = useChatIndividualContextSelector((state) => state.currentMessageId);
+  const selectedFileId = useChatIndividualContextSelector((state) => state.selectedFileId);
+  const selectedFileType = useChatIndividualContextSelector((state) => state.selectedFileType);
+  const { data: chatTitle } = useGetChat({ id: chatId || '' }, { select: (x) => x.title, enabled: !!chatId });
+
+  const { isFavorited, onFavoriteClick } = useFavoriteStar({
+    id: chatId || '',
+    type: ShareAssetType.CHAT,
+    name: chatTitle || ''
+  });
+
+  const menuItem: DropdownItems = useMemo(() => {
+    return [
+      {
+        label: 'Delete chat',
+        value: 'delete',
+        icon: <Trash />,
+        loading: isDeleting,
+        onClick: () =>
+          chatId &&
+          deleteChat(
+            { data: [chatId] },
+            {
+              onSuccess: () => {
+                onChangePage({ route: BusterRoutes.APP_CHAT });
+                openSuccessMessage('Chat deleted');
+              }
+            }
+          )
+      },
+      {
+        label: 'Duplicate chat',
+        value: 'duplicate',
+        icon: <DuplicatePlus />,
+        loading: isDuplicating,
+        onClick: async () => {
+          if (chatId) {
+            const res = await duplicateChat({ id: chatId });
+            await timeout(100);
+            if (selectedFileType && selectedFileId) {
+              const route = assetParamsToRoute({
+                assetId: selectedFileId,
+                chatId: res.id,
+                type: selectedFileType
+              });
+
+              if (route) await onChangePage(route);
+            } else {
+              await onChangePage({ route: BusterRoutes.APP_CHAT_ID, chatId: res.id });
+            }
+
+            openSuccessMessage('Chat duplicated');
+          }
+        }
+      },
+      {
+        label: 'Edit chat title',
+        value: 'edit-chat-title',
+        icon: <Pencil />,
+        onClick: async () => {
+          const input = document.getElementById(CHAT_HEADER_TITLE_ID) as HTMLInputElement;
+          if (input) {
+            await timeout(25);
+            input.focus();
+            input.select();
+          }
+        }
+      },
+      {
+        label: isFavorited ? 'Remove from favorites' : 'Add to favorites',
+        value: 'add-to-favorites',
+        icon: isFavorited ? <StarFilled /> : <Star />,
+        onClick: onFavoriteClick
+      }
+    ];
+  }, [
+    chatId,
+    isDeleting,
+    isDuplicating,
+    currentMessageId,
+    deleteChat,
+    duplicateChat,
+    isFavorited,
+    onFavoriteClick,
+    openSuccessMessage
+  ]);
+
+  return (
+    <Dropdown align="end" items={menuItem}>
+      {chatId ? children : null}
+    </Dropdown>
+  );
+});
+
+ChatContainerHeaderDropdown.displayName = 'ChatContainerHeaderDropdown';

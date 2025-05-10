@@ -1,0 +1,1891 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Testing Rules and Best Practices
+
+## Testing Organization Best Practices
+
+### Recommended Mocking Libraries
+
+For consistent mocking across the codebase, use these libraries:
+
+| Library | Purpose | Use Case |
+|---------|---------|----------|
+| **mockito** | HTTP service mocking | Mocking external API calls |
+| **mockall** | Trait/struct mocking | Mocking database and service interfaces |
+| **mock-it** | Simple mocking | Quick mocks for simple interfaces |
+| **wiremock** | Advanced HTTP mocking | Complex API scenarios with extended matching |
+
+Always prefer dependency injection patterns to enable easy mocking of dependencies.
+
+### Test Utilities and Setup
+
+#### Core Test Types
+
+The test infrastructure provides several core test utilities for consistent test setup:
+
+```rust
+// Example of TestDb and TestSetup implementation
+pub struct TestDb {
+    pub test_id: String,
+    pub organization_id: Uuid,
+    pub user_id: Uuid,
+    initialized: bool,
+}
+
+impl TestDb {
+    pub async fn new() -> Result<Self> {
+        // Load environment variables
+        dotenv().ok();
+        
+        // Initialize test pools using existing pools
+        let test_id = format!("test-{}", Uuid::new_v4());
+        let organization_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        
+        Ok(Self {
+            test_id,
+            organization_id,
+            user_id,
+            initialized: true,
+        })
+    }
+    
+    // Get connections from pre-initialized pools
+    pub async fn diesel_conn(&self) -> Result<AsyncPgConnection> {
+        get_pg_pool()
+            .get()
+            .await
+            .map_err(|e| anyhow!("Failed to get diesel connection: {}", e))
+    }
+    
+    pub async fn sqlx_conn(&self) -> Result<PgConnection> {
+        get_sqlx_pool()
+            .acquire()
+            .await
+            .map_err(|e| anyhow!("Failed to get sqlx connection: {}", e))
+    }
+    
+    pub async fn redis_conn(&self) -> Result<RedisConnection> {
+        get_redis_pool()
+            .get()
+            .await
+            .map_err(|e| antml!("Failed to get redis connection: {}", e))
+    }
+    
+    // Create test organization
+    pub async fn create_organization(&self) -> Result<Organization> {
+        let org = Organization {
+            id: Uuid::new_v4(),
+            name: "Test Organization".to_string(),
+            domain: Some("test.org".to_string()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            deleted_at: None,
+        };
+        
+        let mut conn = self.diesel_conn().await?;
+        diesel::insert_into(organizations::table)
+            .values(&org)
+            .execute(&mut conn)
+            .await?;
+            
+        Ok(org)
+    }
+
+    // Create test user
+    pub async fn create_user(&self) -> Result<User> {
+        let user = User {
+            id: Uuid::new_v4(),
+            email: format!("test-{}@example.com", Uuid::new_v4()),
+            name: Some("Test User".to_string()),
+            config: json!({}),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            attributes: json!({}),
+            avatar_url: None,
+        };
+        
+        let mut conn = self.diesel_conn().await?;
+        diesel::insert_into(users::table)
+            .values(&user)
+            .execute(&mut conn)
+            .await?;
+            
+        Ok(user)
+    }
+
+    // Create user-organization relationship
+    pub async fn create_user_to_org(
+        &self,
+        user_id: Uuid,
+        org_id: Uuid,
+        role: UserOrganizationRole,
+    ) -> Result<UserToOrganization> {
+        let user_org = UserToOrganization {
+            user_id,
+            organization_id: org_id,
+            role,
+            sharing_setting: SharingSetting::Private,
+            edit_sql: true,
+            upload_csv: true,
+            export_assets: true,
+            email_slack_enabled: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            deleted_at: None,
+            created_by: user_id,
+            updated_by: user_id,
+            deleted_by: None,
+            status: UserOrganizationStatus::Active,
+        };
+        
+        let mut conn = self.diesel_conn().await?;
+        diesel::insert_into(users_to_organizations::table)
+            .values(&user_org)
+            .execute(&mut conn)
+            .await?;
+            
+        Ok(user_org)
+    }
+
+    // Create authenticated user for testing
+    pub async fn create_authenticated_user(
+        &self,
+        role: Option<UserOrganizationRole>,
+    ) -> Result<(AuthenticatedUser, Organization)> {
+        let org = self.create_organization().await?;
+        let user = self.create_user().await?;
+        
+        let role = role.unwrap_or(UserOrganizationRole::Admin);
+        self.create_user_to_org(user.id, org.id, role).await?;
+        
+        let auth_user = AuthenticatedUser {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            organization_id: org.id,
+            role,
+            sharing_setting: SharingSetting::Private,
+            edit_sql: true,
+            upload_csv: true,
+            export_assets: true,
+            email_slack_enabled: true,
+        };
+        
+        Ok((auth_user, org))
+    }
+}
+
+// Helper struct for test setup
+pub struct TestSetup {
+    pub user: AuthenticatedUser,
+    pub organization: Organization,
+    pub db: TestDb,
+}
+
+impl TestSetup {
+    pub async fn new(role: Option<UserOrganizationRole>) -> Result<Self> {
+        let test_db = TestDb::new().await?;
+        let (user, org) = test_db.create_authenticated_user(role).await?;
+        
+        Ok(Self {
+            user,
+            organization: org,
+            db: test_db,
+        })
+    }
+}
+
+### Library Code Testing Structure
+- **Unit Tests**: Include unit tests inside library source files using `#[cfg(test)]` modules
+- **Integration Tests**: Place integration tests in the lib's `tests/` directory
+- **Test Utils**: Create a private `test_utils.rs` module in each lib for test utilities specific to that lib
+- **Scope Isolation**: Test utilities should only be shared within their scope (e.g., libs/database, libs/agents)
+- **Conditional Testing**: Use conditional compilation or runtime checks to make tests non-blocking (e.g., skip tests if a required API key is missing)
+
+### API (src) Testing Structure
+- Maintain API-specific tests in the `/api/tests/` directory
+- Organize integration tests to mirror the API's route structure
+- Keep API-specific test utilities in the shared test common directory
+
+### Testing Configuration
+- Use cargo features to make running specific test groups easier
+- Consider using cargo-nextest for parallel test execution
+- Add test tags to group tests by functionality or component
+
+### Running Tests in Different Scopes
+
+- **Run all tests**: `cargo test`
+- **Run library-specific tests**: `cargo test -p <library-name>`
+- **Run a specific test**: `cargo test <test_name>`
+- **Run tests with specific pattern**: `cargo test -- <pattern>`
+- **Run tests conditionally**: Use features to enable/disable test categories
+
+```toml
+# In Cargo.toml
+[features]
+integration-tests = []
+unit-tests = []
+```
+
+```rust
+// In code
+#[cfg(test)]
+#[cfg(feature = "integration-tests")]
+mod integration_tests {
+    // Test code...
+}
+```
+
+Then, run: `cargo test --features integration-tests`
+
+### Examples of Proper Test Organization
+
+#### Example: Library Unit Tests (`#[cfg(test)]` Module)
+```rust
+// File: libs/braintrust/src/helpers.rs
+
+// Implementation code...
+
+/// Get system message from a stored prompt
+pub async fn get_prompt_system_message(client: &BraintrustClient, prompt_id: &str) -> Result<String> {
+    // Function implementation...
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use dotenv::dotenv;
+    
+    #[tokio::test]
+    async fn test_get_prompt_system_message() -> Result<()> {
+        // Load environment variables
+        dotenv().ok();
+        
+        // Skip test if no API key is available (non-blocking)
+        if env::var("BRAINTRUST_API_KEY").is_err() {
+            println!("Skipping test_get_prompt_system_message: No API key available");
+            return Ok(());
+        }
+        
+        // Test implementation...
+        
+        Ok(())
+    }
+}
+```
+
+#### Example: Library Integration Tests (Separate Directory)
+```rust
+// File: libs/handlers/tests/metrics/delete_metric_test.rs
+
+use handlers::metrics::delete_metric_handler;
+use database::models::MetricFile;
+use crate::common::fixtures::create_test_metric;
+use anyhow::Result;
+
+/// Integration test for the delete_metric_handler
+#[tokio::test]
+async fn test_delete_metric_integration() -> Result<()> {
+    // Setup test environment
+    let test_db = setup_test_db().await?;
+    
+    // Create and insert test data
+    let test_metric = create_test_metric(&test_db).await?;
+    
+    // Test the handler functionality
+    let result = delete_metric_handler(&test_metric.id, &test_db.user_id).await?;
+    
+    // Verify results
+    assert!(result.deleted_at.is_some());
+    
+    // Clean up test data
+    test_db.cleanup().await?;
+    
+    Ok(())
+}
+```
+
+#### Example: Library-Specific Test Utilities
+```rust
+// File: libs/database/src/test_utils.rs
+
+use crate::models::{User, Organization};
+use crate::pool::PgPool;
+use uuid::Uuid;
+use anyhow::Result;
+
+/// Test utilities specific to the database library
+pub struct DatabaseTestUtils {
+    pub pool: PgPool,
+    pub test_id: String,
+}
+
+impl DatabaseTestUtils {
+    pub async fn new() -> Result<Self> {
+        // Initialize test database connection
+        let pool = create_test_pool().await?;
+        let test_id = Uuid::new_v4().to_string();
+        
+        Ok(Self { pool, test_id })
+    }
+    
+    pub async fn create_test_user(&self) -> Result<User> {
+        // Create a test user in the database
+        // ...
+    }
+    
+    pub async fn cleanup(&self) -> Result<()> {
+        // Clean up test data
+        // ...
+    }
+}
+```
+
+## General Testing Guidelines
+- All tests must be async and use tokio test framework
+- Tests should be well-documented with clear test case descriptions and expected outputs
+- Each test should focus on testing a single piece of functionality
+- Tests should be independent and not rely on the state of other tests
+- Use meaningful test names that describe what is being tested
+- **Design for testability**: Code should be written with testing in mind
+  - Favor dependency injection for easier mocking
+  - Separate business logic from external dependencies
+  - Use interfaces/traits to abstract dependencies
+  - Write small, focused functions that do one thing well
+  - Avoid global state and side effects where possible
+
+## Unit Tests
+- Unit tests should be inline with the code they are testing using `#[cfg(test)]` modules
+- Each public function should have corresponding unit tests
+- **Important**: Unit tests should NEVER connect to external services or databases
+- Mock all external dependencies:
+  - Use mockito for HTTP services
+  - Use trait-based mocks for database operations
+  - Create mock implementations of dependencies
+- **IMPORTANT**: Always use the async version of mockito:
+  ```rust
+  // Correct async approach
+  let server = mockito::Server::new_async().await;
+  ```
+  Instead of:
+  ```rust
+  // Incorrect: Not compatible with tokio runtime
+  let server = mockito::Server::new();
+  ```
+- When using mockito in async tests, ensure all mock setup is done asynchronously
+- Test both success and error cases
+- Test edge cases and boundary conditions
+- Structure unit tests to maximize code coverage
+- Use dependency injection to make code easily testable with mocks
+
+## Integration Tests
+
+Integration tests are specifically designed to verify the interaction with external services and should be separate from the main codebase.
+
+### Integration Test Structure
+
+- **Location**: Integration tests should always be in a separate `tests/` directory, never mixed with the main code
+- **External Interaction**: Unlike unit tests, integration tests are explicitly designed to interact with external services (databases, APIs, etc.)
+- **Configuration**:
+  - Configuration should come from environment variables via `.env` files
+  - Use `dotenv` to load environment variables during test setup
+  - Example: Database connection parameters should come from- Prefer `.env.test` forific configurations
+
+```rust
+// Example of proper integration test setup
+use dotenv::dotenv;
+use diesel_async::AsyncPgConnection;
+use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+use deadpool_diesel::postgres::Pool;
+
+// Setup function that loads from environment
+async fn setup_test_environment() -> Result<TestContext> {
+    // Load environment variables, preferring .env.test if available
+    if std::path::Path::new(".env.test").exists() {
+        dotenv::from_filename(".env.test").ok();
+    } else {
+        dotenv().ok();
+    }
+    
+    // Create database pool from environment variables
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set for integration tests");
+    
+    let config = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
+    let pool = Pool::builder(config).max_size(5).build()?;
+    
+    // Return test context with real connections to external services
+    Ok(TestContext { pool, ... })
+}
+```
+
+### Library-Specific Integration Tests
+
+- Each library should have its own integration tests in its `tests/` directory
+- These tests should focus ONLY on the library's public API
+- Integration tests should NOT cross library boundaries
+- Example structure:
+
+```
+libs/
+  ├── database/
+  │   ├── src/
+  │   └── tests/           # Database-specific integration tests
+  │       ├── common/      # Database test utilities
+  │       └── models/      # Tests for database models
+  ├── handlers/
+  │   ├── src/
+  │   └── tests/           # Handler-specific integration tests
+  │       ├── common/      # Handler test utilities
+  │       └── users/       # Tests for user handlers
+```
+
+### API Integration Tests
+
+- API tests should be in the main `/api/tests/` directory
+- Structure should mirror the API routes
+- Focus on end-to-end testing of the entire API
+- Example structure:
+
+```
+api/
+  ├── src/
+  └── tests/
+      ├── common/          # Shared API test utilities
+      └── integration/     # Organized by API resource
+          ├── users/       # User endpoint tests
+          ├── threads/     # Thread endpoint tests
+          └── messages/    # Message endpoint tests
+```
+
+### Modular Test Utilities
+
+- **Scope Isolation**: Test utilities should be scoped to their specific domain:
+  - Database utilities in `libs/database/tests/common/`
+  - Handler utilities in `libs/handlers/tests/common/`
+  - API utilities in `/api/tests/common/`
+
+- **Modular Structure**: Organize test utilities by function:
+
+```
+tests/common/
+  ├── mod.rs              # Re-exports common utilities
+  ├── db.rs               # Database test helpers
+  ├── http.rs             # HTTP client testing
+  ├── auth.rs             # Authentication test helpers
+  └── fixtures/           # Test data fixtures
+      ├── mod.rs          # Re-exports all fixtures
+      ├── users.rs        # User test data
+      └── messages.rs     # Message test data
+```
+
+- **No Global Utilities**: Avoid creating global test utilities shared across all components
+- **Library-Specific Fixtures**: Test fixtures should be specific to their domain
+
+### Test Data Isolation
+
+- Each test should create its own isolated data
+- Use unique identifiers (UUIDs) to mark test data
+- Clean up after tests complete
+- Use test_id pattern to track and clean up test data:
+
+```rust
+#[tokio::test]
+async fn test_user_creation() -> Result<()> {
+    let test_id = Uuid::new_v4().to_string();
+    let pool = get_db_pool().await?;
+    
+    // Create test data with test_id marker
+    let test_user = UserBuilder::new()
+        .with_email("test@example.com")
+        .with_test_id(&test_id)  // Mark this as test data
+        .build();
+        
+    // Insert test data
+    test_user.insert(&pool).await?;
+    
+    // Run test assertions...
+    
+    // Clean up all data with this test_id
+    cleanup_test_data(&pool, &test_id).await?;
+    
+    Ok(())
+}
+```
+
+### Integration Test Setup Best Practices
+
+#### Environment Configuration
+- Create a centralized test environment setup system:
+  ```rust
+  // tests/common/env.rs
+  use std::sync::Once;
+  use dotenv::dotenv;
+  
+  static ENV_SETUP: Once = Once::new();
+  
+  /// Initialize test environment once per test process
+  pub fn init_test_env() {
+      ENV_SETUP.call_once(|| {
+          // First check for .env.test
+          if std::path::Path::new(".env.test").exists() {
+              dotenv::from_filename(".env.test").ok();
+          } else {
+              // Fall back to regular .env
+              dotenv().ok();
+          }
+          
+          // Set additional test-specific env vars
+          if std::env::var("TEST_ENV").is_err() {
+              std::env::set_var("TEST_ENV", "test");
+          }
+          
+          // Initialize logger for tests
+          if std::env::var("TEST_LOG").is_ok() {
+              tracing_subscriber::fmt()
+                  .with_env_filter("debug")
+                  .with_test_writer()
+                  .init();
+          }
+      });
+  }
+  ```
+
+#### Database Setup
+- All integration tests must import and utilize the application's schema from @schema.rs
+- Database models from @models.rs should be used for test data setup and verification
+- Use the `testkit` library for test IDs and directly access pools from the database library:
+  ```rust
+  // tests/common/db.rs
+  use anyhow::Result;
+  use diesel_async::AsyncPgConnection;
+  use database::pool::get_pg_pool;
+  use testkit::test_id;
+  use uuid::Uuid;
+  
+  pub struct TestDb {
+      pub test_id: String, // Unique identifier for this test run
+  }
+  
+  impl TestDb {
+      /// Creates a new isolated test database environment
+      pub fn new() -> Self {
+          // Generate unique test identifier
+          let test_id = test_id();
+          
+          Self { test_id }
+      }
+      
+      /// Get a database connection from the pre-initialized pool
+      pub async fn get_conn(&self) -> Result<diesel_async::pooled_connection::bb8::PooledConnection<AsyncPgConnection>> {
+          Ok(get_pg_pool().get().await?)
+      }
+      
+      /// Clean up test data created by this test instance
+      pub async fn cleanup(&self) -> Result<()> {
+          let mut conn = self.get_conn().await?;
+          
+          // Delete data with test_id marker
+          // Reset sequences if needed
+          
+          Ok(())
+      }
+      
+      /// Create test data with proper isolation using the test_id
+      pub async fn create_test_data(&self) -> Result<()> {
+          let mut conn = self.get_conn().await?;
+          
+          // Create test data tagged with test_id for isolation
+          Ok(())
+      }
+  }
+  
+  impl Drop for TestDb {
+      fn drop(&mut self) {
+          // Optionally perform synchronous cleanup on drop
+          // This ensures cleanup even if tests panic
+      }
+  }
+  ```
+
+#### Required Environment Variables
+The testkit automatically creates a `.env.test` file if one doesn't exist, with necessary default test configurations. You can customize it with:
+
+```env
+TEST_DATABASE_URL=postgres://user:pass@localhost/test_db
+TEST_POOLER_URL=postgres://user:pass@localhost/test_db
+TEST_REDIS_URL=redis://localhost:6379
+TEST_DATABASE_POOL_SIZE=10
+TEST_SQLX_POOL_SIZE=10
+TEST_API_KEY=test-key
+TEST_ENV=test
+# Optional: enable test logging
+# TEST_LOG=debug
+```
+
+**IMPORTANT**: All integration tests should use the pools from the database library (already initialized by the testkit at build time). Tests should never be written with hardcoded service configurations or manual pool creation.
+
+#### Service Mocks
+Create reusable mock services for common external dependencies:
+```rust
+// tests/common/mocks/http_client.rs
+pub struct MockHttpClient {
+    server: mockito::Server,
+}
+
+impl MockHttpClient {
+    pub async fn new() -> Self {
+        Self {
+            server: mockito::Server::new_async().await,
+        }
+    }
+    
+    pub fn url(&self) -> String {
+        self.server.url()
+    }
+    
+    pub fn mock_success_response(&self, path: &str, body: &str) -> mockito::Mock {
+        self.server
+            .mock("GET", path)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .create()
+    }
+    
+    pub fn mock_error_response(&self, path: &str, status: usize) -> mockito::Mock {
+        self.server
+            .mock("GET", path)
+            .with_status(status)
+            .create()
+    }
+}
+```
+
+## Test Structure
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mockito;
+    use tokio;
+
+    // Optional: Setup function for common test initialization
+    async fn setup() -> TestContext {
+        // Setup code here
+    }
+
+    #[tokio::test]
+    async fn test_name() {
+        // Test case description in comments
+        // Expected output in comments
+        
+        // Arrange
+        // Setup test data and dependencies
+        
+        // Act
+        // Execute the function being tested
+        
+        // Assert
+        // Verify the results
+    }
+}
+```
+
+## Mocking Guidelines for Async Testing
+
+### Mockito for HTTP Service Mocking
+
+Mockito is the primary tool for mocking HTTP services in tests. When using mockito in an async context:
+
+```rust
+// CORRECT: Create async mockito server
+#[tokio::test]
+async fn test_http_client() -> Result<()> {
+    // Always use the async version for tokio compatibility
+    let server = mockito::Server::new_async().await;
+    
+    // Setup the mock with expected request and response
+    let mock = server
+        .mock("GET", "/api/data")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"key": "value"}"#)
+        .create();
+    
+    // Use the server's URL with your client
+    let client = YourHttpClient::new(&server.url());
+    let response = client.get_data().await?;
+    
+    // Verify the mock was called as expected
+    mock.assert();
+    
+    Ok(())
+}
+```
+
+#### Mockito Best Practices:
+
+- **Always use `Server::new_async()`** instead of `Server::new()` for tokio compatibility
+- **Match complex requests** with matchers:
+  ```rust
+  // Match JSON request bodies
+  server.mock("POST", "/api/users")
+      .match_body(mockito::Matcher::Json(json!({"name": "Test User"})))
+      .with_status(201)
+      .create();
+      
+  // Match headers
+  server.mock("GET", "/api/protected")
+      .match_header("authorization", "Bearer token")
+      .with_status(200)
+      .create();
+  ```
+- **Test different response scenarios** (success, errors, timeouts):
+  ```rust
+  // Success response
+  let success_mock = server.mock("GET", "/api/resource/1")
+      .with_status(200)
+      .with_body(r#"{"id": "1", "name": "Resource"}"#)
+      .create();
+      
+  // Error response
+  let error_mock = server.mock("GET", "/api/resource/999")
+      .with_status(404)
+      .with_body(r#"{"error": "Not found"}"#)
+      .create();
+      
+  // Timeout simulation
+  let timeout_mock = server.mock("GET", "/api/slow")
+      .with_delay(std::time::Duration::from_secs(10))
+      .with_status(200)
+      .create();
+  ```
+- **Create reusable mock setup functions** for common patterns
+
+### Additional Mocking Libraries for Async Rust
+
+#### 1. Mock_it for trait mocking
+
+For mocking traits and interfaces:
+
+```rust
+use mock_it::Mock;
+
+#[async_trait]
+pub trait Database {
+    async fn get_user(&self, id: &str) -> Result<User>;
+}
+
+// Create a mock implementation
+let mut db_mock = Mock::new();
+
+// Set up expectations with async behavior
+db_mock.expect_call(matching!("get_user", arg if arg == "123"))
+    .returns_async(Ok(User {
+        id: "123".to_string(),
+        name: "Test User".to_string(),
+    }));
+
+// Test using the mock
+let result = db_mock.get_user("123").await?;
+assert_eq!(result.name, "Test User");
+```
+
+#### 2. Async-std's Async-Mock
+
+For async-std runtime testing:
+
+```rust
+use async_std::test;
+use async_mock::AsyncMock;
+
+#[derive(AsyncMock)]
+#[async_mock(UserRepository)]
+pub trait UserRepository {
+    async fn find_user(&self, id: &str) -> Result<User>;
+}
+
+#[test]
+async fn test_user_service() {
+    // Create a mock repository
+    let mock_repo = MockUserRepository::new();
+    
+    // Setup expectations
+    mock_repo.expect_find_user()
+        .with(eq("123"))
+        .returns(Ok(User { id: "123".to_string(), name: "User" }));
+    
+    // Test service with mock
+    let service = UserService::new(mock_repo);
+    let user = service.get_user_data("123").await?;
+    
+    assert_eq!(user.name, "User");
+}
+```
+
+#### 3. WireMock for Complex HTTP Mocking
+
+For extensive API mocking scenarios:
+
+```rust
+use wiremock::{MockServer, Mock, ResponseTemplate};
+use wiremock::matchers::{method, path};
+
+#[tokio::test]
+async fn test_api_client() -> Result<()> {
+    // Start mock server
+    let mock_server = MockServer::start().await;
+    
+    // Setup mock
+    Mock::given(method("GET"))
+        .and(path("/api/users"))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_json(json!([
+                {"id": "1", "name": "User 1"},
+                {"id": "2", "name": "User 2"}
+            ]))
+        )
+        .mount(&mock_server)
+        .await;
+    
+    // Create client using mock URL
+    let client = ApiClient::new(&mock_server.uri());
+    
+    // Test the client
+    let users = client.list_users().await?;
+    assert_eq!(users.len(), 2);
+    
+    Ok(())
+}
+```
+
+#### 4. Tower's `mock` Module for Service Mocking
+
+For mocking Tower services:
+
+```rust
+use tower_test::{mock, assert_request_eq};
+use tower::Service;
+
+#[tokio::test]
+async fn test_tower_service() {
+    // Create mock service
+    let (mut mock, handle) = mock::pair::<Request<()>, Response<()>>();
+    
+    // Spawn a task that processes requests
+    tokio::spawn(async move {
+        // Send successful response
+        if let Ok(request) = handle.recv().await {
+            handle.send_response(
+                Response::builder()
+                    .status(200)
+                    .body(())
+                    .unwrap()
+            );
+        }
+    });
+    
+    // Create your service that uses the mock
+    let service = YourService::new(mock);
+    
+    // Make request through your service
+    let response = service
+        .call(Request::get("/test").body(()).unwrap())
+        .await
+        .unwrap();
+        
+    assert_eq!(response.status(), 200);
+}
+```
+
+### Mocking Database Access for Unit Tests
+
+For unit tests, completely mock the database access rather than using real connections:
+
+```rust
+use mock_it::Mock;
+use async_trait::async_trait;
+use uuid::Uuid;
+
+// Define a repository trait that can be mocked
+#[async_trait]
+pub trait UserRepository {
+    async fn find_user_by_id(&self, id: &str) -> Result<Option<User>>;
+    async fn create_user(&self, email: &str, name: &str) -> Result<User>;
+    async fn delete_user(&self, id: &str) -> Result<()>;
+}
+
+// In unit tests, create a mock implementation
+#[tokio::test]
+async fn test_user_service_with_mocked_db() -> Result<()> {
+    // Create mock repository
+    let mut repo_mock = Mock::new();
+    
+    // Setup expectations for database operations
+    let test_user = User {
+        id: Uuid::new_v4().to_string(),
+        email: "test@example.com".to_string(),
+        name: "Test User".to_string(),
+        created_at: chrono::Utc::now(),
+    };
+    
+    // Mock the find_user_by_id method
+    repo_mock.expect_call(matching!("find_user_by_id", arg if arg == "123"))
+        .returns_async(Ok(Some(test_user.clone())));
+    
+    // Create the service with the mocked repository
+    let service = UserService::new(repo_mock);
+    
+    // Test the service logic
+    let user = service.get_user_profile("123").await?;
+    
+    // Assertions to verify service logic
+    assert_eq!(user.email, "test@example.com");
+    
+    Ok(())
+}
+```
+
+### Mocking Diesel Models for Unit Tests
+
+For mocking Diesel model operations:
+
+```rust
+use mockall::predicate::*;
+use mockall::mock;
+
+// Create a mock for database operations
+mock! {
+    pub DieselDb {
+        async fn find_user(&self, id: &str) -> Result<Option<User>>;
+        async fn create_user(&self, data: NewUser) -> Result<User>;
+    }
+}
+
+// User service that depends on database
+struct UserService {
+    db: Box<dyn DieselDbTrait>,
+}
+
+impl UserService {
+    fn new(db: impl DieselDbTrait + 'static) -> Self {
+        Self { db: Box::new(db) }
+    }
+    
+    async fn get_user(&self, id: &str) -> Result<Option<User>> {
+        self.db.find_user(id).await
+    }
+}
+
+// Unit test with mocked database
+#[tokio::test]
+async fn test_get_user() -> Result<()> {
+    // Create mock DB
+    let mut mock_db = MockDieselDb::new();
+    
+    // Setup expectations
+    let test_user = User {
+        id: "user123".to_string(),
+        name: "Test User".to_string(),
+        email: "test@example.com".to_string(),
+        created_at: chrono::Utc::now(),
+    };
+    
+    mock_db.expect_find_user()
+        .with(eq("user123"))
+        .times(1)
+        .returning(move |_| Ok(Some(test_user.clone())));
+    
+    // Create service with mock
+    let service = UserService::new(mock_db);
+    
+    // Test service method
+    let user = service.get_user("user123").await?;
+    
+    // Verify results
+    assert!(user.is_some());
+    let user = user.unwrap();
+    assert_eq!(user.email, "test@example.com");
+    
+    Ok(())
+}
+```
+
+### Combining Different Mocking Approaches
+
+For complex systems, combine different mocking libraries:
+
+```rust
+#[tokio::test]
+async fn test_complex_system() -> Result<()> {
+    // Set up HTTP mock
+    let server = mockito::Server::new_async().await;
+    
+    // Set up mock responses
+    let api_mock = server
+        .mock("GET", "/api/data")
+        .with_status(200)
+        .with_body(r#"{"data": "value"}"#)
+        .create();
+    
+    // Create mock database implementation
+    let mut db_mock = Mock::new();
+    db_mock.expect_call(matching!("save_data", _))
+        .returns_async(Ok(()));
+    
+    // Initialize system with mocks
+    let client = HttpClient::new(&server.url());
+    let system = YourSystem::new(client, db_mock);
+    
+    // Test system behavior
+    let result = system.process_and_save().await?;
+    assert!(result.is_success());
+    
+    // Verify HTTP mock was called
+    api_mock.assert();
+    
+    Ok(())
+}
+```
+
+## Error Testing
+- Test error conditions and error handling
+- Verify error messages and error types
+- Test timeout scenarios
+- Test connection failures
+- Test invalid input handling
+
+## Database Testing
+- Use a separate test database for integration tests
+- Clean up test data after tests complete
+- Test database connection error handling
+
+## Test Output
+- Tests should provide clear error messages
+- Use descriptive assert messages
+- Print relevant debug information in test failures
+- Log test execution progress for long-running tests
+
+## CI/CD Considerations
+- All tests must pass in CI environment
+- Tests should be reproducible
+- Tests should not have external dependencies that could fail CI
+- Test execution time should be reasonable
+
+## Example Unit Test with Mockito
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mockito;
+    use tokio;
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_api_call_success() -> Result<()> {
+        // Test case: Successful API call returns expected response
+        // Expected: Response contains user data with status 200
+        
+        // Create async mockito server
+        let server = mockito::Server::new_async().await;
+        
+        // Setup the mock with expected request and response
+        let mock = server
+            .mock("GET", "/api/user")
+            .match_header("authorization", "Bearer test-token")
+            .with_status(200)
+            .with_body(r#"{"id": "123", "name": "Test User"}"#)
+            .create();
+
+        // Create API client with mock server URL
+        let client = ApiClient::new(server.url());
+        
+        // Execute the function being tested
+        let response = client.get_user("test-token").await?;
+        
+        // Verify results
+        assert_eq!(response.id, "123");
+        assert_eq!(response.name, "Test User");
+        
+        // Verify that the mock was called as expected
+        mock.assert();
+        
+        Ok(())
+    }
+    
+    #[tokio::test]
+    async fn test_api_call_error_handling() -> Result<()> {
+        // Test case: API returns error status
+        // Expected: Function returns appropriate error
+        
+        let server = mockito::Server::new_async().await;
+        
+        // Setup mock with error response
+        let mock = server
+            .mock("GET", "/api/user")
+            .with_status(401)
+            .with_body(r#"{"error": "Unauthorized"}"#)
+            .create();
+
+        let client = ApiClient::new(server.url());
+        
+        // Execute and verify it returns an error
+        let result = client.get_user("invalid-token").await;
+        assert!(result.is_err());
+        
+        // Verify the error contains the expected message
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Unauthorized"));
+        
+        mock.assert();
+        
+        Ok(())
+    }
+}
+```
+
+## Example Application Integration Test
+
+```rust
+use crate::tests::common::db::TestDb;
+use crate::database::{models, schema, pool};
+use crate::handlers::users::get_user_handler;
+use anyhow::Result;
+
+#[tokio::test]
+async fn test_user_creation_flow() -> Result<()> {
+    // Setup test database with isolation
+    // TestDb handles test ID generation and connection access
+    let test_db = TestDb::new();
+    
+    // Create test user using fixture or builder pattern
+    let test_user = models::User::builder()
+        .email("test@example.com")
+        .name("Test User")
+        .test_id(&test_db.test_id) // Set test ID for isolation
+        .build();
+    
+    // Insert test data with proper error handling
+    let mut conn = test_db.get_conn().await?;
+    diesel::insert_into(schema::users::table)
+        .values(&test_user)
+        .execute(&mut conn)
+        .await?;
+    
+    // Create HTTP client for API testing
+    let client = reqwest::Client::new();
+    
+    // Test the API endpoint
+    let response = client
+        .get(&format!("{}/api/users/{}", TEST_API_URL, test_user.id))
+        .header("Authorization", "Bearer test-token")
+        .send()
+        .await?;
+    
+    // Verify response status
+    assert_eq!(response.status(), 200);
+    
+    // Parse and verify response body
+    let user_response = response.json::<UserResponse>().await?;
+    assert_eq!(user_response.email, "test@example.com");
+    
+    // Clean up test data
+    test_db.cleanup().await?;
+    
+    Ok(())
+}
+```
+
+## Example Library Integration Test
+
+This example shows how to structure integration tests for libraries in the `libs/` directory:
+
+```rust
+// File: libs/my_library/tests/integration_test.rs
+
+use my_library::{Client, Config};
+use anyhow::Result;
+
+// Import test utilities if needed
+// Testing utilities can be in the library's tests/common/ directory
+
+#[tokio::test]
+async fn test_client_performs_operation() -> Result<()> {
+    // Setup mock server for external API
+    let server = mockito::Server::new_async().await;
+    
+    // Configure mock responses
+    let mock = server
+        .mock("POST", "/api/resource")
+        .with_status(201)
+        .with_body(r#"{"id": "new-resource-id"}"#)
+        .create();
+    
+    // Configure the client to use the mock server
+    let config = Config::builder()
+        .base_url(server.url())
+        .timeout(std::time::Duration::from_secs(5))
+        .build();
+        
+    let client = Client::new(config);
+    
+    // Call the library function being tested
+    let result = client.create_resource("test-resource").await?;
+    
+    // Verify the library correctly processed the response
+    assert_eq!(result.id, "new-resource-id");
+    
+    // Verify the mock was called as expected
+    mock.assert();
+    
+    Ok(())
+}
+```
+
+## Common Test Utilities
+
+A comprehensive set of testing utilities has been implemented in the `tests/common/` directory. These utilities provide a standardized approach to testing throughout the codebase and should be used for all new tests. The utilities address common testing patterns and provide a consistent interface for test code.
+
+### Common Test Module Structure
+```
+tests/
+├── common/
+│   ├── mod.rs                # Main module that re-exports all utilities
+│   ├── env.rs                # Environment setup utilities
+│   ├── db.rs                 # Database testing utilities with test isolation
+│   ├── http/                 # HTTP testing utilities
+│   │   ├── mock_server.rs    # MockServer wrapper for mockito
+│   │   ├── client.rs         # TestHttpClient for API requests
+│   │   └── mod.rs            # HTTP module exports
+│   ├── fixtures/             # Test data fixtures
+│   │   ├── mod.rs            # Exports all fixtures
+│   │   ├── builder.rs        # FixtureBuilder trait and helpers
+│   │   ├── users.rs          # User-related test data
+│   │   └── threads.rs        # Thread-related test data
+│   ├── assertions/           # Test assertion utilities
+│   │   ├── mod.rs            # Exports all assertions
+│   │   ├── response.rs       # HTTP response assertions
+│   │   └── model.rs          # Model validation assertions
+│   ├── matchers/             # Matcher utilities for mockito
+│   │   ├── mod.rs            # Exports all matchers
+│   │   ├── json.rs           # JSON matchers for request bodies
+│   │   └── headers.rs        # Header matchers for requests
+│   └── helpers.rs            # General test helper functions
+└── integration/              # Integration test files
+```
+
+### Environment Setup Utilities
+The `env.rs` module provides utilities for setting up the test environment:
+
+```rust
+// tests/common/env.rs
+use std::sync::Once;
+use dotenv::dotenv;
+
+static ENV_SETUP: Once = Once::new();
+
+/// Initialize test environment once per test process
+pub fn init_test_env() {
+    ENV_SETUP.call_once(|| {
+        // First check for .env.test
+        if std::path::Path::new(".env.test").exists() {
+            dotenv::from_filename(".env.test").ok();
+        } else {
+            // Fall back to regular .env
+            dotenv().ok();
+        }
+        
+        // Set additional test-specific env vars
+        if std::env::var("TEST_ENV").is_err() {
+            std::env::set_var("TEST_ENV", "test");
+        }
+        
+        // Initialize logger for tests
+        if std::env::var("TEST_LOG").is_ok() {
+            tracing_subscriber::fmt()
+                .with_env_filter("debug")
+                .with_test_writer()
+                .init();
+        }
+    });
+}
+
+/// Get a config value from environment with fallback
+pub fn get_test_config(key: &str, default: &str) -> String {
+    std::env::var(key).unwrap_or_else(|_| default.to_string())
+}
+```
+
+### Database Testing Utilities
+The `db.rs` module provides utilities for database testing with proper test isolation:
+
+```rust
+// tests/common/db.rs
+use anyhow::Result;
+use diesel_async::{AsyncPgConnection, AsyncConnection};
+use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+use deadpool_diesel::postgres::Pool;
+use uuid::Uuid;
+
+pub struct TestDb {
+    pub pool: Pool,
+    pub test_id: String, // Unique identifier for this test run
+}
+
+impl TestDb {
+    /// Creates a new isolated test database environment
+    pub async fn new() -> Result<Self> {
+        // Initialize environment
+        crate::common::env::init_test_env();
+        
+        // Generate unique test identifier
+        let test_id = Uuid::new_v4().to_string();
+        
+        // Get database config from env
+        let database_url = std::env::var("TEST_DATABASE_URL")
+            .expect("TEST_DATABASE_URL must be set for tests");
+        
+        // Create connection manager and pool
+        let config = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
+        let pool = Pool::builder(config)
+            .max_size(5)
+            .build()?;
+            
+        let db = Self { pool, test_id };
+        
+        // Optional: Setup initial test data
+        // db.setup_schema().await?;
+        
+        Ok(db)
+    }
+    
+    /// Get a connection from the pool
+    pub async fn get_conn(&self) -> Result<deadpool_diesel::postgres::Connection> {
+        Ok(self.pool.get().await?)
+    }
+    
+    /// Clean up test data created by this test instance
+    pub async fn cleanup(&self) -> Result<()> {
+        // Example: Clean up tables used in tests
+        // let conn = &mut self.get_conn().await?;
+        // diesel::delete(schema::users::table)
+        //    .filter(schema::users::test_id.eq(&self.test_id))
+        //    .execute(conn)
+        //    .await?;
+        
+        Ok(())
+    }
+    
+    /// Get the unique test ID for this test instance
+    pub fn test_id(&self) -> &str {
+        &self.test_id
+    }
+}
+
+impl Drop for TestDb {
+    fn drop(&mut self) {
+        // Optional synchronous cleanup fallback
+    }
+}
+```
+
+### HTTP Testing Utilities
+The `http/` directory contains utilities for HTTP testing, including a MockServer wrapper and a TestHttpClient:
+
+```rust
+// tests/common/http/mock_server.rs
+use anyhow::Result;
+use mockito::{self, Mock, Server};
+use serde_json::Value;
+
+/// MockServer is a wrapper around mockito::Server
+pub struct MockServer {
+    server: Server,
+}
+
+impl MockServer {
+    /// Create a new MockServer
+    pub async fn new() -> Result<Self> {
+        Ok(Self {
+            server: Server::new_async().await,
+        })
+    }
+    
+    /// Get the base URL of the mock server
+    pub fn url(&self) -> String {
+        self.server.url()
+    }
+    
+    /// Mock a GET request with JSON response
+    pub fn mock_get_json<T: serde::Serialize>(&self, path: &str, response: &T) -> Result<Mock> {
+        let body = serde_json::to_string(response)?;
+        
+        Ok(self.server
+            .mock("GET", path)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .create())
+    }
+    
+    /// Mock a POST request with JSON request and response
+    pub fn mock_post_json<T: serde::Serialize>(&self, 
+                                              path: &str, 
+                                              request_matcher: Option<Value>,
+                                              response: &T) -> Result<Mock> {
+        let body = serde_json::to_string(response)?;
+        let mut mock = self.server
+            .mock("POST", path)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(body);
+            
+        // Add request body matcher if provided
+        if let Some(req_body) = request_matcher {
+            mock = mock.match_body(crate::common::matchers::json::json_contains(req_body));
+        }
+        
+        Ok(mock.create())
+    }
+    
+    /// Mock an error response
+    pub fn mock_error(&self, path: &str, method: &str, status: usize, message: &str) -> Result<Mock> {
+        let error_body = serde_json::json!({
+            "error": message,
+        });
+        
+        Ok(self.server
+            .mock(method, path)
+            .with_status(status)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&error_body)?)
+            .create())
+    }
+}
+
+// tests/common/http/client.rs
+use anyhow::Result;
+use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
+use serde::de::DeserializeOwned;
+use serde_json::Value;
+use std::time::Duration;
+
+/// TestHttpClient provides a fluent API for making HTTP requests in tests
+pub struct TestHttpClient {
+    client: Client,
+    base_url: String,
+}
+
+impl TestHttpClient {
+    /// Create a new TestHttpClient with the given base URL
+    pub fn new(base_url: &str) -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .expect("Failed to create HTTP client");
+            
+        Self {
+            client,
+            base_url: base_url.to_string(),
+        }
+    }
+    
+    /// Create a request builder with the given method and path
+    pub fn request(&self, method: Method, path: &str) -> RequestBuilder {
+        let url = format!("{}{}", self.base_url, path);
+        self.client.request(method, url)
+    }
+    
+    /// Make a GET request and return the response
+    pub async fn get(&self, path: &str) -> Result<Response> {
+        Ok(self.request(Method::GET, path).send().await?)
+    }
+    
+    /// Make a POST request with the given body and return the response
+    pub async fn post<T: serde::Serialize>(&self, path: &str, body: &T) -> Result<Response> {
+        Ok(self.request(Method::POST, path)
+            .json(body)
+            .send()
+            .await?)
+    }
+    
+    /// Make a GET request and parse the response as JSON
+    pub async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let response = self.get(path).await?;
+        
+        if response.status().is_success() {
+            Ok(response.json::<T>().await?)
+        } else {
+            let status = response.status();
+            let error_text = response.text().await?;
+            anyhow::bail!("Request failed with status {}: {}", status, error_text)
+        }
+    }
+    
+    /// Make a POST request with the given body and parse the response as JSON
+    pub async fn post_json<T: serde::Serialize, R: DeserializeOwned>(
+        &self, 
+        path: &str, 
+        body: &T
+    ) -> Result<R> {
+        let response = self.post(path, body).await?;
+        
+        if response.status().is_success() {
+            Ok(response.json::<R>().await?)
+        } else {
+            let status = response.status();
+            let error_text = response.text().await?;
+            anyhow::bail!("Request failed with status {}: {}", status, error_text)
+        }
+    }
+}
+```
+
+### Fixture Builder Pattern
+The `fixtures/builder.rs` file provides a builder pattern for creating test fixtures:
+
+```rust
+// tests/common/fixtures/builder.rs
+use uuid::Uuid;
+
+/// TestFixture is a trait for test fixtures
+pub trait TestFixture {
+    /// Get the test ID for this fixture
+    fn test_id(&self) -> Option<&str>;
+    
+    /// Set the test ID for this fixture
+    fn with_test_id(self, test_id: &str) -> Self;
+}
+
+/// FixtureBuilder is a trait for building test fixtures
+pub trait FixtureBuilder<T> {
+    /// Build the fixture
+    fn build(&self) -> T;
+    
+    /// Build the fixture with the given test ID
+    fn build_with_test_id(&self, test_id: &str) -> T;
+}
+
+/// Example builder for a User fixture
+#[derive(Default)]
+pub struct UserBuilder {
+    pub email: Option<String>,
+    pub name: Option<String>,
+    pub test_id: Option<String>,
+}
+
+impl UserBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    
+    pub fn email(mut self, email: &str) -> Self {
+        self.email = Some(email.to_string());
+        self
+    }
+    
+    pub fn name(mut self, name: &str) -> Self {
+        self.name = Some(name.to_string());
+        self
+    }
+    
+    pub fn test_id(mut self, test_id: &str) -> Self {
+        self.test_id = Some(test_id.to_string());
+        self
+    }
+}
+
+impl FixtureBuilder<User> for UserBuilder {
+    fn build(&self) -> User {
+        User {
+            id: Uuid::new_v4(),
+            email: self.email.clone().unwrap_or_else(|| format!("user-{}@example.com", Uuid::new_v4())),
+            name: self.name.clone(),
+            test_id: self.test_id.clone(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+    
+    fn build_with_test_id(&self, test_id: &str) -> User {
+        let mut builder = self.clone();
+        builder.test_id = Some(test_id.to_string());
+        builder.build()
+    }
+}
+```
+
+### Assertion Utilities
+The `assertions/` directory contains utilities for making assertions in tests:
+
+```rust
+// tests/common/assertions/response.rs
+use anyhow::Result;
+use reqwest::Response;
+use reqwest::StatusCode;
+use serde::de::DeserializeOwned;
+use serde_json::Value;
+
+/// Extension trait for reqwest::Response providing assertion methods
+pub trait ResponseAssertions {
+    /// Assert that the response has the given status code
+    fn assert_status(self, status: StatusCode) -> Self;
+    
+    /// Assert that the response has a success status code (2xx)
+    fn assert_success(self) -> Self;
+    
+    /// Assert that the response has an error status code (4xx or 5xx)
+    fn assert_error(self) -> Self;
+    
+    /// Assert that the response contains the given header
+    fn assert_header(self, name: &str, value: &str) -> Self;
+    
+    /// Assert that the response body contains the given JSON value
+    fn assert_json_contains(self, expected: Value) -> Result<Self>;
+    
+    /// Deserialize the response body as JSON and apply the given assertion function
+    fn assert_json<T, F>(self, assert_fn: F) -> Result<Self>
+    where
+        T: DeserializeOwned,
+        F: FnOnce(&T) -> bool;
+}
+
+impl ResponseAssertions for Response {
+    fn assert_status(self, status: StatusCode) -> Self {
+        assert_eq!(self.status(), status, "Expected status code {}, got {}", status, self.status());
+        self
+    }
+    
+    fn assert_success(self) -> Self {
+        assert!(self.status().is_success(), "Expected success status, got {}", self.status());
+        self
+    }
+    
+    fn assert_error(self) -> Self {
+        assert!(self.status().is_client_error() || self.status().is_server_error(), 
+                "Expected error status, got {}", self.status());
+        self
+    }
+    
+    fn assert_header(self, name: &str, value: &str) -> Self {
+        let header_value = self.headers().get(name)
+            .expect(&format!("Header {} not found", name))
+            .to_str()
+            .expect(&format!("Header {} is not valid UTF-8", name));
+            
+        assert_eq!(header_value, value, "Expected header {} to be {}, got {}", name, value, header_value);
+        self
+    }
+    
+    async fn assert_json_contains(self, expected: Value) -> Result<Self> {
+        let json = self.json::<Value>().await?;
+        
+        // Check if expected is a subset of json
+        assert!(json_contains(&json, &expected), 
+                "Expected JSON to contain {:?}, got {:?}", expected, json);
+                
+        Ok(self)
+    }
+    
+    async fn assert_json<T, F>(self, assert_fn: F) -> Result<Self>
+    where
+        T: DeserializeOwned,
+        F: FnOnce(&T) -> bool,
+    {
+        let json = self.json::<T>().await?;
+        
+        assert!(assert_fn(&json), "JSON assertion failed");
+        
+        Ok(self)
+    }
+}
+
+// Helper function to check if one JSON value contains another
+fn json_contains(json: &Value, expected: &Value) -> bool {
+    match (json, expected) {
+        (Value::Object(json_obj), Value::Object(expected_obj)) => {
+            expected_obj.iter().all(|(k, v)| {
+                json_obj.get(k).map_or(false, |json_v| json_contains(json_v, v))
+            })
+        }
+        (Value::Array(json_arr), Value::Array(expected_arr)) => {
+            expected_arr.iter().all(|expected_v| {
+                json_arr.iter().any(|json_v| json_contains(json_v, expected_v))
+            })
+        }
+        _ => json == expected,
+    }
+}
+```
+
+### JSON and Header Matchers
+The `matchers/` directory contains utilities for matching JSON and headers in mockito:
+
+```rust
+// tests/common/matchers/json.rs
+use mockito::Matcher;
+use serde_json::Value;
+use std::fmt;
+
+/// Create a matcher that checks if a JSON request body contains the given JSON value
+pub fn json_contains(expected: Value) -> JsonContainsMatcher {
+    JsonContainsMatcher { expected }
+}
+
+/// Matcher for checking if a JSON request body contains a JSON value
+pub struct JsonContainsMatcher {
+    expected: Value,
+}
+
+impl Matcher for JsonContainsMatcher {
+    fn matches(&self, body: &[u8]) -> bool {
+        let actual: Value = match serde_json::from_slice(body) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+        
+        contains_json(&actual, &self.expected)
+    }
+}
+
+impl fmt::Display for JsonContainsMatcher {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "JSON containing {}", self.expected)
+    }
+}
+
+/// Helper function to check if one JSON value contains another
+fn contains_json(json: &Value, expected: &Value) -> bool {
+    match (json, expected) {
+        (Value::Object(json_obj), Value::Object(expected_obj)) => {
+            expected_obj.iter().all(|(k, v)| {
+                json_obj.get(k).map_or(false, |json_v| contains_json(json_v, v))
+            })
+        }
+        (Value::Array(json_arr), Value::Array(expected_arr)) => {
+            expected_arr.iter().all(|expected_v| {
+                json_arr.iter().any(|json_v| contains_json(json_v, expected_v))
+            })
+        }
+        _ => json == expected,
+    }
+}
+
+// tests/common/matchers/headers.rs
+use mockito::Matcher;
+use std::collections::HashMap;
+use std::fmt;
+
+/// Create a matcher that checks if request headers match the expected headers
+pub fn header_matcher(expected_headers: HashMap<String, String>) -> HeaderMatcher {
+    HeaderMatcher { expected_headers }
+}
+
+/// Matcher for checking request headers
+pub struct HeaderMatcher {
+    expected_headers: HashMap<String, String>,
+}
+
+impl Matcher for HeaderMatcher {
+    fn matches(&self, request_headers: &[u8]) -> bool {
+        let headers_str = match std::str::from_utf8(request_headers) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        
+        // Parse headers
+        let headers: HashMap<String, String> = headers_str
+            .split("\r\n")
+            .filter(|line| !line.is_empty())
+            .filter_map(|line| {
+                let mut parts = line.splitn(2, ": ");
+                let name = parts.next()?;
+                let value = parts.next()?;
+                Some((name.to_lowercase(), value.to_string()))
+            })
+            .collect();
+            
+        // Check if expected headers are present
+        self.expected_headers.iter().all(|(name, value)| {
+            headers.get(&name.to_lowercase()).map_or(false, |v| v == value)
+        })
+    }
+}
+
+impl fmt::Display for HeaderMatcher {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Headers containing {:?}", self.expected_headers)
+    }
+}
+```
+
+### Using These Test Utilities
+
+Here's an example of using these test utilities in an integration test:
+
+```rust
+use crate::tests::common::{
+    db::TestDb,
+    env::init_test_env,
+    http::{MockServer, TestHttpClient},
+    fixtures::UserBuilder,
+    assertions::ResponseAssertions,
+};
+use anyhow::Result;
+use serde_json::json;
+
+#[tokio::test]
+async fn test_user_api() -> Result<()> {
+    // Initialize environment
+    init_test_env();
+    
+    // Setup test database
+    let test_db = TestDb::new().await?;
+    
+    // Create test user using builder
+    let user = UserBuilder::new()
+        .email("test@example.com")
+        .name("Test User")
+        .build_with_test_id(test_db.test_id());
+        
+    // Insert test user into database
+    // ...
+    
+    // Setup mock server for external API
+    let mock_server = MockServer::new().await?;
+    
+    // Configure mock responses
+    let mock = mock_server.mock_get_json("/api/external", &json!({
+        "status": "success"
+    }))?;
+    
+    // Create test HTTP client
+    let client = TestHttpClient::new("http://localhost:8000");
+    
+    // Test the API endpoint
+    let response = client.get(&format!("/api/users/{}", user.id)).await?;
+    
+    // Assert on the response
+    response
+        .assert_status(StatusCode::OK)
+        .assert_header("content-type", "application/json")
+        .assert_json_contains(json!({
+            "id": user.id.to_string(),
+            "email": "test@example.com"
+        }))?;
+    
+    // Verify the mock was called
+    mock.assert();
+    
+    // Clean up
+    test_db.cleanup().await?;
+    
+    Ok(())
+}
+```

@@ -1,0 +1,16 @@
+[package]
+name = "dbt_utils"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+tokio = { version = "1.0", features = ["process", "macros"] } # For running dbt command
+colored = "3.0"
+indicatif = "0.17"
+
+[lib]
+name = "dbt_utils"
+path = "src/lib.rs" 

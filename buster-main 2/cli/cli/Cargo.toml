@@ -1,0 +1,80 @@
+[package]
+name = "buster-cli"
+version = "0.1.4"
+edition = "2021"
+build = "build.rs"
+
+[lib]
+name = "buster_cli"
+path = "src/lib.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = "0.1.77"
+clap = { workspace = true, features = ["derive", "env"] }
+confy = { workspace = true }
+dirs = { workspace = true }
+futures = { workspace = true }
+indicatif = { workspace = true }
+inquire = { workspace = true }
+lazy_static = { workspace = true }
+ratatui = { workspace = true, features = ["crossterm"] }
+crossterm = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true, features = ["json", "rustls-tls", "stream"] }
+rpassword = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+strip-ansi-escapes = "0.2.0"
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "time",
+] }
+tokio-util = { workspace = true, features = ["io"] }
+futures-util = { workspace = true }
+uuid = { workspace = true }
+colored = { workspace = true }
+rustls = { workspace = true, features = ["tls12"] }
+url = { workspace = true }
+zip = { workspace = true }
+glob = { workspace = true }
+walkdir = { workspace = true }
+semver = { workspace = true }
+once_cell = { workspace = true }
+pathdiff = { workspace = true }
+# Add the shared query engine library
+query_engine = { workspace = true }
+rust-embed = { workspace = true, features = ["include-exclude"] }
+
+litellm = { path = "../../api/libs/litellm" }
+
+rustyline = { workspace = true }
+
+# Add the agents crate
+agents = { path = "../../api/libs/agents" }
+
+# Add semantic layer library
+semantic_layer = { path = "../../api/libs/semantic_layer" }
+
+chrono = { workspace = true }
+
+dbt_utils = { path = "../libs/dbt_utils" }
+
+[profile.dev]
+# Increase parallel code generation units for faster debug builds
+codegen-units = 16
+debug = 1
+
+[build-dependencies]
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.16.0"
+mockall = "0.13.1"

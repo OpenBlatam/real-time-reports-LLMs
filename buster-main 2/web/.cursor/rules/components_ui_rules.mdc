@@ -1,0 +1,59 @@
+---
+description: Rules for the components ui directory
+globs: src/components/ui/**/*
+alwaysApply: false
+---
+# Component Directory Structure and Organization
+
+## Component Purpose
+- This directory contains basic, reusable UI components that serve as building blocks
+- These basic components are designed to be combined and composed into larger feature components
+- Feature components (which combine these basic components) should be placed in their respective feature directories
+- The goal is to maintain a library of simple, pure components that can be easily reused across features
+
+## Directory Organization
+- Each directory within `src/components/ui` should represent a specific category of components
+- Directory names should clearly indicate the type of components contained within
+- Examples:
+  - `buttons/` - Button components
+  - `inputs/` - Input field components
+  - `card/` - Card and container components
+  - `icons/` - Icon components
+  - `layout/` - Layout-related components
+  - `typography/` - Text and typography components
+
+## Storybook
+- Each component in this directory should have an assosciated storybook
+- Each storybook story should try to include the args (props) that are assosciated with each component
+- Storybook storys should be title UI/{directory}/{component_name}
+
+## Component Dependencies and Imports
+- When a component needs to use another component, prefer relative imports
+- Example: 
+  ```typescript
+  // Good
+  import { Button } from '../buttons/ui/buttons/Button';
+  ```
+- Exception: Only use absolute imports (@/) when the relative path would be overly complex (>4 levels deep)
+
+## Styling Guidelines
+1. Primary Styling Method:
+   - Use Tailwind CSS for general styling and layout
+   - Class names should follow Tailwind's utility-first approach
+
+2. Color Management:
+   - Always use `tailwind.css` colors for color-related styling. Only use the colors defined in [tailwind.css](mdc:src/styles/tailwind.css). Do not use the other generic tailwind colors.
+
+## Component Implementation
+- Use functional components exclusively
+- Implement proper TypeScript types for props and state
+- Use React.memo() for performance optimization when appropriate
+
+##
+I have a helper called `cn`. This is how I do a tailwind merge and classnames concatination. This is found in import { cn } from '@/lib/classMerge';
+
+
+## File Naming
+- Use PascalCase for component files
+- File name should match the component name
+

@@ -1,0 +1,2 @@
+https://andrew-dev-p.github.io/chartjs-showcase/drill-down-bar.html
+https://github.com/Pecacheu/chartjs-filter-plugin

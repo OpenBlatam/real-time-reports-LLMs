@@ -1,0 +1,48 @@
+[package]
+name = "handlers"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Use workspace dependencies
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+futures = { workspace = true }
+regex = { workspace = true }
+indexmap = { workspace = true }
+async-trait = { workspace = true }
+
+
+# Local dependencies
+database = { path = "../database" }
+agents = { path = "../agents" }
+litellm = { path = "../litellm" }
+query_engine = { path = "../query_engine" }
+middleware = { path = "../middleware" }
+sharing = { path = "../sharing" }
+search = { path = "../search" }
+email = { path = "../email" }
+sql_analyzer = { path = "../sql_analyzer" }
+dataset_security = { path = "../dataset_security" }
+semantic_layer = { path = "../semantic_layer" }
+
+# Add any handler-specific dependencies here 
+dashmap = "5.5.3"
+
+# Add stored_values dependency
+stored_values = { path = "../stored_values" }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+mockall = { workspace = true }
+dotenv = { workspace = true }
+lazy_static.workspace = true
+ctor = "0.4.1"

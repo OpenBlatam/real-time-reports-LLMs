@@ -1,0 +1,34 @@
+[package]
+name = "email"
+version = "0.1.0"
+edition = "2021"
+
+# Dependencies should be inherited from workspace
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+# Added dependencies from moved resend logic
+resend-rs = { workspace = true }
+lazy_static = { workspace = true }
+html-escape = { workspace = true }
+# Add other workspace dependencies as needed (e.g., related to email sending like reqwest or specific email crates)
+# reqwest = { workspace = true, features = ["json"] } 
+
+# Development dependencies
+[dev-dependencies]
+tokio-test = { workspace = true }
+# Added test dependency
+dotenv = { workspace = true }
+# Add other workspace dev dependencies as needed
+
+# Feature flags
+[features]
+default = []
+# Define library-specific features here 

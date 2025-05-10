@@ -1,0 +1,67 @@
+---
+description: Rules for the components ui directory
+globs: src/components/features/**/*
+alwaysApply: false
+---
+# Feature Components Rules
+
+## Purpose
+This directory contains complex, reusable feature components that combine multiple basic UI components to create higher-level functionality. Feature components are self-contained, composable units that implement specific product features or patterns.
+
+## Directory Structure
+Each feature component should be organized in its own directory using the following structure:
+
+```
+features/
+  └── ComponentName/
+      ├── ComponentName.tsx        # Main component implementation
+      ├── ComponentName.test.tsx   # Tests for the component (if asked for it)
+      ├── ComponentName.stories.tsx # Storybook stories for the component
+      └── index.ts                # Exports the component and its types
+```
+
+## Naming Conventions
+- Feature component names should be PascalCase and descriptive of their functionality
+- The component directory should match the component name exactly
+- Example: `PaginatedTable`, `SearchableDropdown`, `FilterableList`
+
+## Component Guidelines
+1. Feature components should:
+   - Import basic UI components from `../ui/{component_directory}/{component_name}`
+   - Be functional components using React hooks
+   - Handle their own state management when necessary
+   - Be fully typed using TypeScript
+   - Include proper documentation and props interface
+   - Have a corresponding Storybook story showcasing different states and variations (The storybook should be titled Features/{feature_name})
+
+2. Components should be:
+   - Reusable across different parts of the application
+   - Self-contained with minimal external dependencies
+   - Well-documented with clear props interfaces
+   - Tested thoroughly
+
+## Example Structure
+```typescript
+// features/PaginatedTable/PaginatedTable.tsx
+import { Table, Pagination } from '../ui';
+
+export const PaginatedTable: React.FC<PaginatedTableProps> = React.memo((props) => {
+  // Implementation
+});
+
+PaginatedTable.displayName = 'PaginatedTable';
+```
+
+## Best Practices
+1. Keep components focused on a single responsibility
+2. Use composition over inheritance
+3. Implement proper error handling and loading states
+4. Include accessibility features by default
+5. Document all props and their purposes
+6. Write unit tests for component logic
+7. Use TypeScript for type safety
+
+## Dependencies
+- Feature components should primarily depend on basic UI components
+- Minimize external dependencies
+- Document any required context providers or external dependencies

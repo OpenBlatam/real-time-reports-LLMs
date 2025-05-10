@@ -1,0 +1,56 @@
+@theme {
+  /* animations */
+  --animate-indeterminate-progress-bar: indeterminate-progress-bar 1s infinite linear;
+  --animate-collapsible-down: collapsible-down 0.12s ease-out;
+  --animate-collapsible-up: collapsible-up 0.12s ease-out;
+  --animate-fade-in: fade-in var(--tw-duration, 0.7s) var(--tw-ease-in, ease-in);
+
+  @keyframes indeterminate-progress-bar {
+    0% {
+      transform: translateX(0) scaleX(0);
+    }
+    40% {
+      transform: translateX(0) scaleX(0.4);
+    }
+    100% {
+      transform: translateX(100%) scaleX(0.5);
+    }
+  }
+
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+      opacity: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+      opacity: 1;
+    }
+  }
+
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+      opacity: 1;
+    }
+    to {
+      height: 0;
+      opacity: 0;
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+.fade-in {
+  animation-name: fade-in;
+  animation-duration: var(--tw-duration, 0.7s);
+  animation-timing-function: var(--tw-ease-in, ease-in);
+}

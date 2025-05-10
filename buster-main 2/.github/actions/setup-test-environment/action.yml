@@ -1,0 +1,74 @@
+name: 'Setup Test Environment'
+description: 'Installs tools, starts Supabase, runs migrations, and seeds the database.'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Supabase CLI
+      uses: supabase/setup-cli@v1
+      with:
+        version: latest # Or pin to a specific version
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+
+    - name: Cache Rust dependencies
+      uses: useblacksmith/rust-cache@v3
+
+    - name: Install Diesel CLI
+      shell: bash
+      run: cargo install diesel_cli --no-default-features --features postgres
+
+    - name: Start Supabase
+      working-directory: ./api
+      shell: bash
+      run: |
+        echo "Starting Supabase..."
+        supabase start --exclude postgrest,studio
+
+        echo "Waiting a bit for services to stabilize after start..."
+        sleep 15 # Adjust if needed, Supabase start should block but sometimes a small delay helps
+
+        echo "Checking Supabase status..."
+        supabase status
+        if [ $? -ne 0 ]; then
+          echo "::error::Supabase failed to start correctly."
+          # Attempt to fetch logs if possible (might not be available easily with setup-cli)
+          # supabase logs --project-ref local # This might need project-ref
+          exit 1
+        fi
+
+        echo "Supabase started."
+
+    - name: Run Migrations
+      working-directory: ./api # Assuming migrations are always relative to api
+      shell: bash
+      run: diesel migration run
+      env:
+        DATABASE_URL: postgres://postgres:postgres@127.0.0.1:54322/postgres
+
+    - name: Seed Database
+      shell: bash
+      run: |
+        # Use hardcoded default credentials for local Supabase
+        PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f ./api/libs/database/setup.sql
+      env:
+        DATABASE_URL: postgres://postgres:postgres@127.0.0.1:54322/postgres # Also set here just in case seed script needs it
+
+    - name: Seed Database
+      shell: bash
+      run: |
+        # Use hardcoded default credentials for local Supabase
+        PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f ./api/libs/database/seed.sql
+      env:
+        DATABASE_URL: postgres://postgres:postgres@127.0.0.1:54322/postgres # Also set here just in case seed script needs it
+
+    # # Install xvfb for X server virtualization
+    # - name: Install xvfb
+    #   run: |
+    #     sudo apt-get update
+    #     sudo apt-get install -y xvfb

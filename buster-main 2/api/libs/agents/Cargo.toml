@@ -1,0 +1,49 @@
+[package]
+name = "agents"
+version = "0.1.0"
+edition = "2021"
+
+# Inherit workspace dependencies
+[dependencies]
+# Use workspace dependencies
+anyhow = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+uuid = { workspace = true }
+litellm = { path = "../litellm" }
+database = { path = "../database" }
+query_engine = { path = "../query_engine" }
+braintrust = { path = "../braintrust" }
+serde_json = { workspace = true }
+futures = { workspace = true }
+chrono = { workspace = true }
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+serde_yaml = { workspace = true }
+tracing = { workspace = true }
+indexmap = { workspace = true }
+once_cell = { workspace = true }
+regex = "1"
+glob = "0.3"
+cohere-rust = { workspace = true }
+dataset_security = { path = "../dataset_security" }
+redis = { workspace = true }
+reqwest = { workspace = true }
+sqlx = { workspace = true }
+stored_values = { path = "../stored_values" }
+tokio-retry = { workspace = true }
+thiserror = { workspace = true }
+raindrop = { path = "../raindrop" }
+sql_analyzer = { path = "../sql_analyzer" }
+rerank = { path = "../rerank" }
+semantic_layer = { path = "../semantic_layer" }
+
+# Development dependencies
+[dev-dependencies]
+tokio-test = { workspace = true }
+mockito = { workspace = true }
+dotenv = { workspace = true }
+
+[features]
+default = []

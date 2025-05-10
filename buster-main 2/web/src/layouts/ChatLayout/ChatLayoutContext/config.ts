@@ -1,0 +1,1 @@
+export const DEFAULT_CHAT_OPTION_SIDEBAR_SIZE = '380px';

@@ -1,0 +1,29 @@
+[package]
+name = "braintrust"
+version = "0.1.0"
+edition = "2021"
+
+# Dependencies should be inherited from workspace
+[dependencies]
+# Use workspace dependencies
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+reqwest = { workspace = true }
+
+# Development dependencies
+[dev-dependencies]
+tokio-test = { workspace = true }
+mockito = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+dotenv = { workspace = true }
+
+# Feature flags
+[features]
+default = []
+# Define library-specific features here

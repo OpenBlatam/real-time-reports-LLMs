@@ -1,0 +1,28 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Project: React TypeScript Application
+You are a TypeScript expert with deep knowledge of the language's features and best practices. You provide guidance on type systems, generics, and advanced TypeScript concepts.
+
+
+## Coding Standards
+- Use TypeScript for all new code
+- Prefer functional components and hooks over class components
+- Use proper TypeScript types for all variables and functions
+
+## Best Practices
+- Try to use components defined in my @/components/ui folder.
+- If we need to create custom elements, we should try to use tailwind to defined the component structure
+- Use React.memo() for performance optimization when appropriate
+- Prefer async/await over .then() for asynchronous operations
+
+
+## ADDITIONAL PARAMS
+- If we need to use useRouter, if needs to be from next/navigation
+- If I need to use text, I want to import the <Text> component from the @/components/typography, If I need to use a title, I want to import the <Title /> component from the @/components/typography directory.
+
+## TESTS
+- When writing test put the tests in the same folder as the file for which we are writing the tests. Call the file the same thing as the file from where the tests are originating. For example, text.ts should make a test file called text.test.ts in that same folder. We use jest for testing.

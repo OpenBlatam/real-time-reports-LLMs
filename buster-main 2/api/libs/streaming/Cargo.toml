@@ -1,0 +1,24 @@
+[package]
+name = "streaming"
+version = "0.1.0"
+edition = "2021"
+
+# Dependencies should be inherited from workspace
+[dependencies]
+# Use workspace dependencies
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+regex = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+chrono = { workspace = true }
+litellm = { path = "../litellm" }
+
+# Development dependencies
+[dev-dependencies]
+tokio-test = { workspace = true }
+
+# Feature flags
+[features]
+default = []

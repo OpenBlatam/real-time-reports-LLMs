@@ -1,0 +1,28 @@
+[package]
+name = "sharing"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+thiserror = { workspace = true }
+
+database = { path = "../database" }
+middleware = { path = "../middleware" }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+mockito = { workspace = true }
+mockall = "0.11.4"
+async-trait = "0.1.74"
+serde_json = { workspace = true }
+
+[features]
+default = []

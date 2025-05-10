@@ -1,0 +1,202 @@
+name: Docker Release
+
+on:
+  push:
+    branches:
+      - main # Trigger when PR from staging is merged to main
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  # Placeholder for Docker Hub username/organization or GHCR owner
+  DOCKER_REGISTRY_OWNER: ghcr.io/${{ github.repository_owner }}
+  API_IMAGE_NAME: buster/api
+  WEB_IMAGE_NAME: buster/web
+
+jobs:
+  prepare_docker_release_info:
+    name: Prepare Docker Release Information
+    runs-on: blacksmith-32vcpu-ubuntu-2204
+    outputs:
+      api_version: ${{ steps.version_info.outputs.api_version }}
+      web_version: ${{ steps.version_info.outputs.web_version }}
+      api_version_found: ${{ steps.version_info.outputs.api_version_found }}
+      web_version_found: ${{ steps.version_info.outputs.web_version_found }}
+    steps:
+      - name: Checkout code from main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }} # Checkout the specific commit on main (merge commit)
+
+      - name: Read API and Web Versions
+        id: version_info
+        shell: bash
+        run: |
+          API_VERSION=""
+          WEB_VERSION=""
+          API_VERSION_FOUND="false"
+          WEB_VERSION_FOUND="false"
+          # Read API version from api/server/Cargo.toml
+          if [ -f api/server/Cargo.toml ]; then
+            API_VERSION=$(grep '^version' api/server/Cargo.toml | head -n 1 | sed 's/version = \"\(.*\)\"/\1/')
+            if [ -n "$API_VERSION" ]; then
+              echo "Read API version '$API_VERSION' from api/server/Cargo.toml"
+              API_VERSION_FOUND="true"
+            else
+              echo "API version string not found in api/server/Cargo.toml despite file existing."
+            fi
+          else
+            echo "Warning: api/server/Cargo.toml not found. Cannot determine API version."
+          fi
+          # Read Web version from web/package.json
+          if [ -f web/package.json ]; then
+            WEB_VERSION=$(jq -r '.version // empty' web/package.json)
+            if [ -n "$WEB_VERSION" ]; then
+              echo "Read Web version '$WEB_VERSION' from web/package.json"
+              WEB_VERSION_FOUND="true"
+            else
+              echo "Web version string not found in web/package.json despite file existing."
+            fi
+          else
+            echo "Warning: web/package.json not found. Cannot determine Web version."
+          fi
+          echo "api_version=$API_VERSION" >> $GITHUB_OUTPUT
+          echo "web_version=$WEB_VERSION" >> $GITHUB_OUTPUT
+          echo "api_version_found=$API_VERSION_FOUND" >> $GITHUB_OUTPUT
+          echo "web_version_found=$WEB_VERSION_FOUND" >> $GITHUB_OUTPUT
+  build_and_push_api:
+    name: Build and Push API Image
+    needs: prepare_docker_release_info
+    if: needs.prepare_docker_release_info.outputs.api_version_found == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [amd64, arm64]
+        include:
+          - platform: amd64
+            runner: blacksmith-8vcpu-ubuntu-2204
+            docker_platform: linux/amd64
+          - platform: arm64
+            runner: blacksmith-8vcpu-ubuntu-2204-arm
+            docker_platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      API_VERSION: ${{ needs.prepare_docker_release_info.outputs.api_version }}
+    steps:
+      - name: Checkout code from main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: useblacksmith/build-push-action@v1
+        with:
+          context: ./api
+          file: ./api/Dockerfile
+          push: true
+          platforms: ${{ matrix.docker_platform }}
+          tags: |
+            ${{ env.DOCKER_REGISTRY_OWNER }}/${{ env.API_IMAGE_NAME }}:${{ env.API_VERSION }}-${{ matrix.platform }}
+            ${{ env.DOCKER_REGISTRY_OWNER }}/${{ env.API_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.platform }}
+            ${{ env.DOCKER_REGISTRY_OWNER }}/${{ env.API_IMAGE_NAME }}:latest-${{ matrix.platform }}
+      
+      - name: Set API Package Visibility to Public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG_NAME: ${{ github.repository_owner }}
+        run: |
+          echo "Attempting to set visibility for $ORG_NAME/${{ env.API_IMAGE_NAME }}"
+          RESPONSE_CODE=$(curl -L -s -o /dev/null -w "%{http_code}" -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/orgs/$ORG_NAME/packages/container/${{ env.API_IMAGE_NAME }}" \
+            -d '{"visibility":"public"}')
+          if [ "$RESPONSE_CODE" -eq 200 ] || [ "$RESPONSE_CODE" -eq 204 ]; then
+            echo "Package $ORG_NAME/${{ env.API_IMAGE_NAME }} visibility set to public successfully."
+          else
+            echo "Failed to set package $ORG_NAME/${{ env.API_IMAGE_NAME }} visibility to public. HTTP Status: $RESPONSE_CODE"
+            # Optionally, fail the step: exit 1
+          fi
+  build_and_push_web:
+    name: Build and Push Web Image
+    needs: prepare_docker_release_info
+    if: needs.prepare_docker_release_info.outputs.web_version_found == 'true'
+    environment: main
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [amd64, arm64]
+        include:
+          - platform: amd64
+            runner: blacksmith-16vcpu-ubuntu-2204
+            docker_platform: linux/amd64
+          - platform: arm64
+            runner: blacksmith-16vcpu-ubuntu-2204-arm
+            docker_platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      WEB_VERSION: ${{ needs.prepare_docker_release_info.outputs.web_version }}
+    steps:
+      - name: Checkout code from main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Web image
+        uses: useblacksmith/build-push-action@v1
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          push: true
+          platforms: ${{ matrix.docker_platform }}
+          tags: |
+            ${{ env.DOCKER_REGISTRY_OWNER }}/${{ env.WEB_IMAGE_NAME }}:${{ env.WEB_VERSION }}-${{ matrix.platform }}
+            ${{ env.DOCKER_REGISTRY_OWNER }}/${{ env.WEB_IMAGE_NAME }}:${{ github.sha }}-${{ matrix.platform }}
+            ${{ env.DOCKER_REGISTRY_OWNER }}/${{ env.WEB_IMAGE_NAME }}:latest-${{ matrix.platform }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_URL=${{ secrets.NEXT_PUBLIC_URL }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_WEB_SOCKET_URL=${{ secrets.NEXT_PUBLIC_WEB_SOCKET_URL }}
+      - name: Set Web Package Visibility to Public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG_NAME: ${{ github.repository_owner }}
+        run: |
+          echo "Attempting to set visibility for $ORG_NAME/${{ env.WEB_IMAGE_NAME }}"
+          RESPONSE_CODE=$(curl -L -s -o /dev/null -w "%{http_code}" -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/orgs/$ORG_NAME/packages/container/${{ env.WEB_IMAGE_NAME }}" \
+            -d '{"visibility":"public"}')
+          if [ "$RESPONSE_CODE" -eq 200 ] || [ "$RESPONSE_CODE" -eq 204 ]; then
+            echo "Package $ORG_NAME/${{ env.WEB_IMAGE_NAME }} visibility set to public successfully."
+          else
+            echo "Failed to set package $ORG_NAME/${{ env.WEB_IMAGE_NAME }} visibility to public. HTTP Status: $RESPONSE_CODE"
+            # Optionally, fail the step: exit 1
+          fi

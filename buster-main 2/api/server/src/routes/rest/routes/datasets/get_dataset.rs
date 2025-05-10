@@ -1,0 +1,144 @@
+use anyhow::{anyhow, Result};
+use axum::{extract::Path, Extension};
+use diesel::{ExpressionMethods, JoinOnDsl, QueryDsl};
+use diesel_async::RunQueryDsl;
+use serde::Serialize;
+use uuid::Uuid;
+use middleware::AuthenticatedUser;
+
+use crate::{
+    database::{
+        enums::UserOrganizationRole,
+        pool::get_pg_pool,
+        schema::{data_sources, datasets, users_to_organizations},
+    },
+    routes::rest::ApiResponse,
+};
+
+#[derive(Serialize)]
+pub struct GetDatasetOwner {
+    pub id: Uuid,
+    pub name: String,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct GetDatasetDataSource {
+    pub id: Uuid,
+    pub name: String,
+}
+
+#[derive(Serialize)]
+pub struct GetDatasetResponse {
+    pub id: Uuid,
+    #[serde(rename = "description")]
+    pub when_to_use: Option<String>,
+    pub name: String,
+    pub sql: Option<String>,
+    pub yml_file: Option<String>,
+    pub data_source_name: String,
+    pub data_source_type: String,
+    pub data_source_id: Uuid,
+}
+
+pub async fn get_dataset(
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(dataset_id): Path<Uuid>,
+) -> Result<ApiResponse<GetDatasetResponse>, (axum::http::StatusCode, &'static str)> {
+    match get_dataset_handler(&dataset_id, &user).await {
+        Ok(dataset) => Ok(ApiResponse::JsonData(dataset)),
+        Err(e) => {
+            tracing::error!("Error getting dataset: {:?}", e);
+            Err((
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to get dataset",
+            ))
+        }
+    }
+}
+
+async fn get_dataset_handler(dataset_id: &Uuid, user: &AuthenticatedUser) -> Result<GetDatasetResponse> {
+    let mut conn = match get_pg_pool().get().await {
+        Ok(conn) => conn,
+        Err(e) => return Err(anyhow!("Unable to get connection from pool: {}", e)),
+    };
+
+    // First check if user has admin access through their organization role
+    let user_role = match users_to_organizations::table
+        .inner_join(
+            datasets::table
+                .on(users_to_organizations::organization_id.eq(datasets::organization_id)),
+        )
+        .select(users_to_organizations::role)
+        .filter(datasets::id.eq(dataset_id))
+        .filter(users_to_organizations::user_id.eq(user.id))
+        .filter(users_to_organizations::deleted_at.is_null())
+        .first::<UserOrganizationRole>(&mut conn)
+        .await
+    {
+        Ok(role) => role,
+        Err(e) => return Err(anyhow!("Unable to get user role: {}", e)),
+    };
+
+    let has_admin_access = matches!(
+        user_role,
+        UserOrganizationRole::WorkspaceAdmin | UserOrganizationRole::DataAdmin
+    );
+
+    if !has_admin_access {
+        return Err(anyhow!(
+            "User does not have permission to access this dataset"
+        ));
+    }
+
+    // TODO: DATASOURCE INFO, name, type, id, etc.
+    let (
+        dataset_id,
+        name,
+        sql,
+        when_to_use,
+        yml_file,
+        data_source_name,
+        data_source_type,
+        data_source_id,
+    ) = match datasets::table
+        .inner_join(data_sources::table.on(datasets::data_source_id.eq(data_sources::id)))
+        .filter(datasets::id.eq(dataset_id))
+        .filter(datasets::deleted_at.is_null())
+        .select((
+            datasets::id,
+            datasets::name,
+            datasets::definition,
+            datasets::when_to_use,
+            datasets::yml_file,
+            data_sources::name,
+            data_sources::type_,
+            data_sources::id,
+        ))
+        .first::<(
+            Uuid,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+            Uuid,
+        )>(&mut conn)
+        .await
+    {
+        Ok(result) => result,
+        Err(e) => return Err(anyhow!("Unable to get dataset from database: {}", e)),
+    };
+
+    Ok(GetDatasetResponse {
+        id: dataset_id,
+        name,
+        sql: Some(sql),
+        when_to_use,
+        yml_file,
+        data_source_name,
+        data_source_type,
+        data_source_id,
+    })
+}

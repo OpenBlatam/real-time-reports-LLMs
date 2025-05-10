@@ -1,0 +1,26 @@
+import React from 'react';
+
+import { iconProps } from './iconProps';
+
+function layers2(props: iconProps) {
+  const strokewidth = props.strokewidth || 1.3;
+  const title = props.title || '18px layers 2';
+
+  return (
+    <svg height="1em" width="1em" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+      <title>{title}</title>
+      <g fill="currentColor">
+        <path
+          d="M15.685,6.048l-5.869-3.09c-.511-.271-1.121-.27-1.631,0L2.315,6.048c-.494,.26-.801,.769-.801,1.327s.307,1.067,.801,1.327l5.869,3.09c.255,.135,.536,.203,.816,.203s.56-.067,.815-.202l5.87-3.091c.494-.26,.801-.769,.801-1.327s-.307-1.067-.801-1.327Z"
+          fill="currentColor"
+        />
+        <path
+          d="M15.736,9.875c-.414,0-.75,.336-.75,.75l-5.87,3.091c-.072,.038-.158,.038-.232,0l-5.87-3.091c0-.414-.336-.75-.75-.75s-.75,.336-.75,.75c0,.559,.307,1.067,.801,1.327l5.869,3.09c.255,.135,.536,.203,.816,.203s.56-.067,.815-.202l5.87-3.091c.494-.26,.801-.769,.801-1.327,0-.414-.336-.75-.75-.75Z"
+          fill="currentColor"
+        />
+      </g>
+    </svg>
+  );
+}
+
+export default layers2;

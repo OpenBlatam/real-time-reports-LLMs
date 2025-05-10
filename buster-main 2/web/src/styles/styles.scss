@@ -1,0 +1,51 @@
+@use './tailwind';
+@use './fonts';
+@use './buster';
+@use './sql';
+
+input {
+  font-family:
+    var(--font-app),
+    -apple-system,
+    'system-ui',
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    'Noto Sans',
+    sans-serif,
+    'Apple Color Emoji',
+    'Segoe UI Emoji',
+    'Segoe UI Symbol',
+    'Noto Color Emoji';
+}
+
+[data-color-scheme='dark'] {
+  color-scheme: dark;
+}
+
+[data-color-scheme='light'] {
+  color-scheme: light;
+}
+
+html,
+body {
+  background-color: #f3f3f3;
+  // min-width: 800px;
+  // @media (prefers-color-scheme: dark) {
+  //   background-color: #000000;
+  //   color: #ffffff;
+  // }
+  // &.dark {
+  //   background-color: #000000;
+  //   color: #ffffff;
+  // }
+}
+
+p {
+  @apply leading-1.5;
+}
+
+th {
+  @apply text-base font-normal;
+}
